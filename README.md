@@ -2,8 +2,6 @@
 
 AI-agent 是一个基于 Java 21、Spring Boot 3 和 Spring AI 的个人智能体项目。项目围绕“AI 对话应用 + RAG 知识库 + 工具调用 + MCP 服务”展开，用来学习和实践大模型应用开发，也可以作为个人作品集项目持续扩展。
 
-本仓库代码基于公开 Spring AI Agent 学习项目整理和二次改造，README、项目命名、包名和运行说明已重新整理为个人项目版本。
-
 ## 项目能力
 
 - AI 多轮对话：基于 Spring AI `ChatClient` 构建对话流程，支持上下文记忆。
@@ -150,7 +148,7 @@ cd image-search-mcp-server
 ## 后续计划
 
 - 增加面向前端调用的 Controller 接口。
-- 把“恋爱问答”示例改造为更通用的个人知识库助手。
+- 把“恋爱问答”示例升级为更通用的个人知识库助手。
 - 补充 PostgreSQL + PGVector 的 Docker Compose 启动配置。
 - 增加统一异常处理和接口返回模型。
 - 增加更多可复用工具，例如待办管理、网页摘要、代码分析。
@@ -160,6 +158,6 @@ cd image-search-mcp-server
 
 - GitHub：[@sunshinebigboy2023](https://github.com/sunshinebigboy2023)
 
-## 致谢
+## 说明
 
-本项目参考并改造自公开的 Spring AI Agent 学习项目，主要用于个人学习、实践和作品展示。若用于公开发布或商业用途，请先确认原项目许可证和第三方依赖许可证要求。
+本项目主要用于个人学习、技术实践和作品展示。使用第三方平台、模型服务或 API 时，请根据对应服务的文档完成配置并遵守其使用条款。
