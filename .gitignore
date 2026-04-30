@@ -1,0 +1,32 @@
+# Local secrets
+.env
+.env.*
+!*.env.example
+application-local.yml
+**/application-local.yml
+
+# Java
+**/target/
+**/*.class
+
+# Node
+**/node_modules/
+**/dist/
+**/.vite/
+
+# Runtime output
+**/logs/
+**/tmp/
+__upload_AI-agent/
+
+# IDE
+.idea/
+.vscode/
+.claude/
+*.iml
+*.iws
+*.ipr
+
+# OS
+.DS_Store
+Thumbs.db
