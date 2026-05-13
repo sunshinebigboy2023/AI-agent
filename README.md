@@ -1,20 +1,39 @@
 # Office AI Agent
 
-面向办公写作、知识库问答和任务执行的网页端 AI 服务。项目由 Spring Boot 后端和 Vue 3 前端组成。
+一个面向办公场景的 AI 助手项目，支持智能问答、知识库检索、文件知识管理和任务执行。
 
-## 目录说明
+## 项目简介
 
-- `ai-agent/`：后端源码、前端源码、Dockerfile 和应用配置。
-- `deploy/`：服务器部署入口文件，包含 Docker Compose 和环境变量模板。
-- `docs/`：项目规划文档。
+- 后端：Spring Boot、Spring AI、DashScope
+- 前端：Vue 3、Vite、axios
+- 能力：SSE 流式对话、RAG 知识库、Markdown/TXT 文件上传、搜索/网页抓取/PDF 等工具调用
 
-## 部署要点
+## 目录
 
-- 默认只暴露前端端口，nginx 会把 `/api` 反向代理到后端。
-- 上传知识库文件会持久化到 `./ai-agent/tmp/knowledge`。
-- `OFFICE_ENABLE_TERMINAL_TOOL` 默认关闭。公开部署时不要开启终端工具。
-- 如果挂在域名后面，把 `OFFICE_ALLOWED_ORIGINS` 改成你的站点来源，例如 `https://office.example.com`。
+- `ai-agent/`：项目主体，包含后端和前端源码
+- `deploy/`：Docker Compose 部署文件
 
-服务器部署相关文件集中在 [deploy](./deploy)。
+## 本地运行
 
-更多开发说明见 [ai-agent/README.md](./ai-agent/README.md)。
+后端：
+
+```bash
+cd ai-agent
+./mvnw spring-boot:run
+```
+
+前端：
+
+```bash
+cd ai-agent/office-ai-assistant-frontend
+npm install
+npm run dev
+```
+
+访问：
+
+```text
+http://localhost:3000
+```
+
+详细配置见 [ai-agent/README.md](./ai-agent/README.md)。

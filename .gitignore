@@ -18,6 +18,7 @@ application-local.yml
 **/logs/
 **/tmp/
 __upload_AI-agent/
+docs/plans/
 
 # IDE
 .idea/
