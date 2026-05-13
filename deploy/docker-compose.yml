@@ -1,0 +1,48 @@
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: office-ai-agent-searxng
+    restart: unless-stopped
+    environment:
+      SEARXNG_BASE_URL: ${SEARXNG_PUBLIC_BASE_URL:-http://localhost:8080/}
+    volumes:
+      - ./searxng:/etc/searxng
+    ports:
+      - "${SEARXNG_PORT:-8080}:8080"
+
+  backend:
+    image: office-ai-agent-backend:latest
+    build:
+      context: ../ai-agent
+    container_name: office-ai-agent-backend
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      SEARXNG_BASE_URL: ${SEARXNG_BASE_URL:-http://searxng:8080}
+      SEARXNG_TOP_K: ${SEARXNG_TOP_K:-5}
+      ALIYUN_OPENSEARCH_HOST: ${ALIYUN_OPENSEARCH_HOST:-}
+      ALIYUN_OPENSEARCH_API_KEY: ${ALIYUN_OPENSEARCH_API_KEY:-}
+      ALIYUN_OPENSEARCH_WORKSPACE: ${ALIYUN_OPENSEARCH_WORKSPACE:-default}
+      ALIYUN_OPENSEARCH_SERVICE_ID: ${ALIYUN_OPENSEARCH_SERVICE_ID:-ops-web-search-001}
+      ALIYUN_OPENSEARCH_TOP_K: ${ALIYUN_OPENSEARCH_TOP_K:-5}
+      ALIYUN_OPENSEARCH_CONTENT_TYPE: ${ALIYUN_OPENSEARCH_CONTENT_TYPE:-snippet}
+      OFFICE_KNOWLEDGE_DIR: /app/tmp/knowledge
+      OFFICE_ALLOWED_ORIGINS: ${OFFICE_ALLOWED_ORIGINS:-*}
+      OFFICE_ENABLE_TERMINAL_TOOL: ${OFFICE_ENABLE_TERMINAL_TOOL:-false}
+      OFFICE_KNOWLEDGE_MAX_UPLOAD_BYTES: ${OFFICE_KNOWLEDGE_MAX_UPLOAD_BYTES:-10485760}
+    volumes:
+      - ../ai-agent/tmp/knowledge:/app/tmp/knowledge
+    depends_on:
+      - searxng
+
+  frontend:
+    image: office-ai-agent-frontend:latest
+    build:
+      context: ../ai-agent/office-ai-assistant-frontend
+    container_name: office-ai-agent-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5021}:80"
+    depends_on:
+      - backend

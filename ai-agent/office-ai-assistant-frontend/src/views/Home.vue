@@ -6,7 +6,7 @@
           <p class="eyebrow">Office AI Workspace</p>
           <h1>AI 办公助手</h1>
         </div>
-        <div class="status-pill">本地开发环境</div>
+        <div class="status-pill" :class="healthStatus">{{ healthText }}</div>
       </header>
 
       <section class="summary-band">
@@ -78,14 +78,35 @@
 </template>
 
 <script setup>
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppFooter from '../components/AppFooter.vue'
+import { healthCheck } from '../api'
 
 const router = useRouter()
+const healthStatus = ref('checking')
+
+const healthText = computed(() => {
+  if (healthStatus.value === 'online') return '服务在线'
+  if (healthStatus.value === 'offline') return '服务离线'
+  return '检测中'
+})
 
 const navigateTo = (path) => {
   router.push(path)
 }
+
+const checkServiceHealth = async () => {
+  healthStatus.value = 'checking'
+  try {
+    await healthCheck()
+    healthStatus.value = 'online'
+  } catch (error) {
+    healthStatus.value = 'offline'
+  }
+}
+
+onMounted(checkServiceHealth)
 </script>
 
 <style scoped>
@@ -133,6 +154,18 @@ h1 {
   color: #475569;
   background: #fff;
   font-size: 13px;
+}
+
+.status-pill.online {
+  border-color: #99f6e4;
+  color: #0f766e;
+  background: #ccfbf1;
+}
+
+.status-pill.offline {
+  border-color: #fecaca;
+  color: #b91c1c;
+  background: #fee2e2;
 }
 
 .summary-band {

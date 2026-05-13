@@ -1,19 +1,20 @@
 package com.yupi.yuaiagent.rag;
 
-import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.ai.document.Document;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.List;
 
-@SpringBootTest
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 class OfficeDocumentLoaderTest {
-
-    @Resource
-    private OfficeDocumentLoader officeDocumentLoader;
 
     @Test
     void loadMarkdowns() {
-        officeDocumentLoader.loadMarkdowns();
+        OfficeDocumentLoader officeDocumentLoader = new OfficeDocumentLoader(new PathMatchingResourcePatternResolver());
+        List<Document> documents = officeDocumentLoader.loadMarkdowns();
+
+        assertNotNull(documents);
     }
 }

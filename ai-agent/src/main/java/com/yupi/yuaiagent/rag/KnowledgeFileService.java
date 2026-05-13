@@ -25,25 +25,36 @@ public class KnowledgeFileService {
 
     private static final String METADATA_FILE = "metadata.properties";
     private static final List<String> SUPPORTED_EXTENSIONS = List.of(".md", ".txt");
+    private static final long DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
     private final Path storageDir;
     private final VectorStore vectorStore;
+    private final long maxUploadBytes;
 
     public KnowledgeFileService(
             @Value("${office.knowledge.storage-dir:${user.dir}/tmp/knowledge}") String storageDir,
+            @Value("${office.knowledge.max-upload-bytes:10485760}") long maxUploadBytes,
             VectorStore vectorStore
     ) {
-        this(Path.of(storageDir), vectorStore);
+        this(Path.of(storageDir), vectorStore, maxUploadBytes);
     }
 
     KnowledgeFileService(Path storageDir, VectorStore vectorStore) {
+        this(storageDir, vectorStore, DEFAULT_MAX_UPLOAD_BYTES);
+    }
+
+    KnowledgeFileService(Path storageDir, VectorStore vectorStore, long maxUploadBytes) {
         this.storageDir = storageDir;
         this.vectorStore = vectorStore;
+        this.maxUploadBytes = maxUploadBytes;
     }
 
     public KnowledgeFileInfo upload(MultipartFile file) throws IOException {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Uploaded file is empty.");
+        }
+        if (file.getSize() > maxUploadBytes) {
+            throw new IllegalArgumentException("Uploaded file exceeds the " + maxUploadBytes + " byte limit.");
         }
 
         String originalFilename = sanitizeFilename(file.getOriginalFilename());
@@ -88,6 +99,11 @@ public class KnowledgeFileService {
     public void delete(String fileId) throws IOException {
         if (fileId == null || fileId.isBlank()) {
             throw new IllegalArgumentException("fileId is required.");
+        }
+        try {
+            UUID.fromString(fileId);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("fileId is invalid.");
         }
         vectorStore.delete(List.of(fileId));
         FileSystemUtils.deleteRecursively(storageDir.resolve(fileId));

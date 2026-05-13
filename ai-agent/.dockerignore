@@ -1,0 +1,16 @@
+.git/
+.gitignore
+.idea/
+.vscode/
+target/
+logs/
+tmp/
+docs/
+*.log
+.env
+.env.local
+.env.*
+office-ai-assistant-frontend/node_modules/
+office-ai-assistant-frontend/dist/
+office-ai-assistant-frontend/.vite/
+yu-image-search-mcp-server/

@@ -1,8 +1,8 @@
 import axios from 'axios'
 
-const API_BASE_URL = process.env.NODE_ENV === 'production'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD
   ? '/api'
-  : 'http://localhost:8123/api'
+  : 'http://localhost:8123/api')
 
 const request = axios.create({
   baseURL: API_BASE_URL,
@@ -43,11 +43,16 @@ export const deleteKnowledgeFile = (fileId) => {
   return request.delete(`/knowledge/files/${encodeURIComponent(fileId)}`)
 }
 
+export const healthCheck = () => {
+  return request.get('/health', { timeout: 5000 })
+}
+
 export default {
   request,
   chatWithOfficeAssistant,
   chatWithOfficeAgent,
   listKnowledgeFiles,
   uploadKnowledgeFile,
-  deleteKnowledgeFile
+  deleteKnowledgeFile,
+  healthCheck
 }

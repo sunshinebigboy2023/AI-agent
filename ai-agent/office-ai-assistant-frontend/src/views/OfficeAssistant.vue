@@ -84,8 +84,9 @@ const sendMessage = (message) => {
   }
 
   eventSource.onerror = () => {
-    connectionStatus.value = 'error'
-    if (aiMessageIndex < messages.value.length && !messages.value[aiMessageIndex].content) {
+    const hasContent = aiMessageIndex < messages.value.length && messages.value[aiMessageIndex].content
+    connectionStatus.value = hasContent ? 'disconnected' : 'error'
+    if (!hasContent && aiMessageIndex < messages.value.length) {
       messages.value[aiMessageIndex].content = '连接中断，请检查后端服务或稍后重试。'
     }
     eventSource.close()

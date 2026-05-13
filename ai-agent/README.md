@@ -55,8 +55,14 @@ Do not commit real API keys. Configure secrets through environment variables:
 
 ```bash
 DASHSCOPE_API_KEY=your-dashscope-api-key
-SEARCH_API_KEY=your-search-api-key
+SEARXNG_BASE_URL=http://localhost:8080
+ALIYUN_OPENSEARCH_HOST=https://your-region.opensearch.aliyuncs.com
+ALIYUN_OPENSEARCH_API_KEY=your-opensearch-api-key
+ALIYUN_OPENSEARCH_WORKSPACE=default
+ALIYUN_OPENSEARCH_SERVICE_ID=ops-web-search-001
 OFFICE_KNOWLEDGE_DIR=./tmp/knowledge
+OFFICE_ALLOWED_ORIGINS=http://localhost:3000
+OFFICE_ENABLE_TERMINAL_TOOL=false
 ```
 
 For local development, you may also create an ignored file:
@@ -72,8 +78,14 @@ spring:
   ai:
     dashscope:
       api-key: your-dashscope-api-key
-search-api:
-  api-key: your-search-api-key
+aliyun:
+  opensearch:
+    host: https://your-region.opensearch.aliyuncs.com
+    api-key: your-opensearch-api-key
+    workspace: default
+    service-id: ops-web-search-001
+searxng:
+  base-url: http://localhost:8080
 ```
 
 ## Run Locally
@@ -112,12 +124,11 @@ Frontend URL:
 http://localhost:3000/index.html
 ```
 
-From the parent project folder, you can also run:
+## Server Deployment
 
-```bat
-start.bat
-stop.bat
-```
+Server deployment files are centralized under the repository root `deploy/` directory. The frontend container serves static assets through nginx and proxies `/api` to the backend container. Uploaded knowledge files are mounted at `./ai-agent/tmp/knowledge`.
+
+For public deployment, keep `OFFICE_ENABLE_TERMINAL_TOOL=false`. The terminal tool is intentionally disabled by default because it can execute host commands and is not appropriate for an unauthenticated public service.
 
 ## Main APIs
 
@@ -152,4 +163,4 @@ rg "api-key|secret|password|sk-" -g "!target/**" -g "!node_modules/**" -g "!dist
 - Uploaded knowledge files are stored under `tmp/knowledge` by default.
 - Current upload MVP supports UTF-8 `.md` and `.txt` files.
 - PGVector configuration exists under the `pgvector` profile, but the default local setup uses `SimpleVectorStore`.
-- The task agent includes a terminal tool. Keep it local-only or add authentication and command restrictions before public deployment.
+- The task agent can include a terminal tool only when `OFFICE_ENABLE_TERMINAL_TOOL=true`. Keep it local-only or add authentication and command restrictions before public deployment.

@@ -6,16 +6,25 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 
-@Disabled("Integration test requires a valid Search API key.")
+@Disabled("Integration test requires valid Alibaba Cloud OpenSearch configuration.")
 @SpringBootTest
 class WebSearchToolTest {
 
-    @Value("${search-api.api-key}")
-    private String searchApiKey;
+    @Value("${aliyun.opensearch.host:}")
+    private String host;
+
+    @Value("${aliyun.opensearch.workspace:default}")
+    private String workspace;
+
+    @Value("${aliyun.opensearch.service-id:ops-web-search-001}")
+    private String serviceId;
+
+    @Value("${aliyun.opensearch.api-key:}")
+    private String apiKey;
 
     @Test
     void searchWeb() {
-        WebSearchTool webSearchTool = new WebSearchTool(searchApiKey);
+        WebSearchTool webSearchTool = new WebSearchTool(host, workspace, serviceId, apiKey, 5, "snippet", "", 5);
         String result = webSearchTool.searchWeb("AI office assistant meeting summary examples");
         Assertions.assertNotNull(result);
     }

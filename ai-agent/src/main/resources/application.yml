@@ -3,6 +3,10 @@ spring:
     name: office-ai-assistant
   profiles:
     active: local
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
   ai:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:}
@@ -49,12 +53,25 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
-# searchAPI
-search-api:
-  api-key: ${SEARCH_API_KEY:}
+aliyun:
+  opensearch:
+    host: ${ALIYUN_OPENSEARCH_HOST:}
+    workspace: ${ALIYUN_OPENSEARCH_WORKSPACE:default}
+    service-id: ${ALIYUN_OPENSEARCH_SERVICE_ID:ops-web-search-001}
+    api-key: ${ALIYUN_OPENSEARCH_API_KEY:}
+    top-k: ${ALIYUN_OPENSEARCH_TOP_K:5}
+    content-type: ${ALIYUN_OPENSEARCH_CONTENT_TYPE:snippet}
+searxng:
+  base-url: ${SEARXNG_BASE_URL:}
+  top-k: ${SEARXNG_TOP_K:5}
 office:
+  web:
+    allowed-origin-patterns: http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173
+  agent:
+    enable-terminal-tool: false
   knowledge:
     storage-dir: ${OFFICE_KNOWLEDGE_DIR:${user.dir}/tmp/knowledge}
+    max-upload-bytes: ${OFFICE_KNOWLEDGE_MAX_UPLOAD_BYTES:10485760}
 # 修改日志级别，查看 Spring AI 更多调用细节
 logging:
   level:
