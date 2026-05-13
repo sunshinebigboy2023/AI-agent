@@ -138,5 +138,3 @@ docker compose up -d --build
 该项目覆盖了 AI 应用开发中的模型接入、RAG 检索、流式交互、工具调用、前后端联调和容器化部署等关键环节：
 
 > 基于 Spring Boot、Spring AI 和 Vue 3 开发办公 AI 助手系统，实现大模型流式对话、RAG 知识库问答、知识文件管理和工具调用 Agent，并使用 Docker Compose 完成前后端容器化部署。
-
-详细配置见 [ai-agent/README.md](./ai-agent/README.md)。
