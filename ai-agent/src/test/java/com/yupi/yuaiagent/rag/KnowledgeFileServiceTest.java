@@ -20,42 +20,73 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class KnowledgeFileServiceTest {
 
     @Test
-    void uploadListAndDeleteTextFile() throws Exception {
+    void uploadListAndDeleteShouldHandleAllChunks() throws Exception {
         Path storageDir = Files.createTempDirectory("knowledge-service-test");
         RecordingVectorStore vectorStore = new RecordingVectorStore();
-        KnowledgeFileService service = new KnowledgeFileService(storageDir, vectorStore);
+        KnowledgeDocumentSplitter splitter = new KnowledgeDocumentSplitter(80, 10);
+        KnowledgeIndexMetadataStore metadataStore = new KnowledgeIndexMetadataStore(storageDir);
+        KnowledgeDocumentLoader loader = new KnowledgeDocumentLoader(storageDir, splitter);
+        KnowledgeIndexService indexService = new KnowledgeIndexService(vectorStore, splitter, loader, metadataStore);
+        KnowledgeFileService service = new KnowledgeFileService(storageDir, indexService);
 
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "meeting-notes.txt",
                 "text/plain",
-                "Project meeting notes\n- Alice owns the launch checklist".getBytes()
+                "Project meeting notes\n".repeat(20).getBytes()
         );
 
         KnowledgeFileInfo uploaded = service.upload(file);
 
         assertEquals("meeting-notes.txt", uploaded.originalFilename());
-        assertEquals("indexed", uploaded.status());
         assertTrue(Files.exists(storageDir.resolve(uploaded.id()).resolve("meeting-notes.txt")));
-        assertEquals(1, vectorStore.addedDocuments.size());
-        assertEquals(uploaded.id(), vectorStore.addedDocuments.getFirst().getMetadata().get("fileId"));
+        assertTrue(vectorStore.addedDocuments.size() > 1);
 
         List<KnowledgeFileInfo> files = service.listFiles();
         assertEquals(1, files.size());
-        assertEquals(uploaded.id(), files.getFirst().id());
 
         service.delete(uploaded.id());
 
-        assertTrue(vectorStore.deletedIds.contains(uploaded.id()));
+        assertEquals(vectorStore.addedDocuments.size(), vectorStore.deletedIds.size());
         assertFalse(Files.exists(storageDir.resolve(uploaded.id())));
         assertTrue(service.listFiles().isEmpty());
+    }
+
+    @Test
+    void rebuildAllShouldReuseChunkMetadataWithoutCrashing() throws Exception {
+        Path storageDir = Files.createTempDirectory("knowledge-rebuild-test");
+        RecordingVectorStore vectorStore = new RecordingVectorStore();
+        KnowledgeDocumentSplitter splitter = new KnowledgeDocumentSplitter(80, 10);
+        KnowledgeIndexMetadataStore metadataStore = new KnowledgeIndexMetadataStore(storageDir);
+        KnowledgeDocumentLoader loader = new KnowledgeDocumentLoader(storageDir, splitter);
+        KnowledgeIndexService indexService = new KnowledgeIndexService(vectorStore, splitter, loader, metadataStore);
+        KnowledgeFileService service = new KnowledgeFileService(storageDir, indexService);
+
+        service.upload(new MockMultipartFile(
+                "file",
+                "policy.md",
+                "text/markdown",
+                ("# 报销制度\n" + "说明内容".repeat(30)).getBytes()
+        ));
+
+        int firstRebuild = indexService.rebuildAll();
+        int secondRebuild = indexService.rebuildAll();
+
+        assertEquals(1, firstRebuild);
+        assertEquals(1, secondRebuild);
+        assertFalse(metadataStore.loadAll().isEmpty());
+        assertFalse(vectorStore.deletedIds.isEmpty());
     }
 
     @Test
     void loadDocumentsFromStoredKnowledgeFiles() throws Exception {
         Path storageDir = Files.createTempDirectory("knowledge-loader-test");
         RecordingVectorStore vectorStore = new RecordingVectorStore();
-        KnowledgeFileService service = new KnowledgeFileService(storageDir, vectorStore);
+        KnowledgeDocumentSplitter splitter = new KnowledgeDocumentSplitter(1000, 150);
+        KnowledgeIndexMetadataStore metadataStore = new KnowledgeIndexMetadataStore(storageDir);
+        KnowledgeDocumentLoader loader = new KnowledgeDocumentLoader(storageDir, splitter);
+        KnowledgeIndexService indexService = new KnowledgeIndexService(vectorStore, splitter, loader, metadataStore);
+        KnowledgeFileService service = new KnowledgeFileService(storageDir, indexService);
         KnowledgeFileInfo uploaded = service.upload(new MockMultipartFile(
                 "file",
                 "policy.md",
@@ -63,11 +94,10 @@ class KnowledgeFileServiceTest {
                 "# Reimbursement\nSubmit invoices before Friday.".getBytes()
         ));
 
-        KnowledgeDocumentLoader loader = new KnowledgeDocumentLoader(storageDir);
         List<Document> documents = loader.loadUploadedDocuments();
 
         assertEquals(1, documents.size());
-        assertEquals(uploaded.id(), documents.getFirst().getId());
+        assertEquals(uploaded.id() + "_chunk_0", documents.getFirst().getId());
         assertEquals("policy.md", documents.getFirst().getMetadata().get("filename"));
         assertTrue(documents.getFirst().getText().contains("Submit invoices"));
     }

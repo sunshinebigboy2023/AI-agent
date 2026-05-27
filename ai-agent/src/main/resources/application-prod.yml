@@ -17,13 +17,27 @@ knife4j:
   enable: ${OFFICE_ENABLE_API_DOCS:false}
 
 office:
+  chat:
+    max-message-length: ${OFFICE_CHAT_MAX_MESSAGE_LENGTH:8000}
   web:
     allowed-origin-patterns: ${OFFICE_ALLOWED_ORIGINS:*}
   agent:
     enable-terminal-tool: ${OFFICE_ENABLE_TERMINAL_TOOL:false}
+    max-steps: ${OFFICE_AGENT_MAX_STEPS:20}
+    max-observation-length: ${OFFICE_AGENT_MAX_OBSERVATION_LENGTH:4000}
   knowledge:
     storage-dir: ${OFFICE_KNOWLEDGE_DIR:/app/tmp/knowledge}
     max-upload-bytes: ${OFFICE_KNOWLEDGE_MAX_UPLOAD_BYTES:10485760}
+    chunk-size: ${OFFICE_KNOWLEDGE_CHUNK_SIZE:1000}
+    chunk-overlap: ${OFFICE_KNOWLEDGE_CHUNK_OVERLAP:150}
+    rebuild-on-startup: ${OFFICE_KNOWLEDGE_REBUILD_ON_STARTUP:true}
+  tools:
+    workspace-dir: ${OFFICE_TOOLS_WORKSPACE_DIR:/app/tmp/workspace}
+    download:
+      max-bytes: ${OFFICE_DOWNLOAD_MAX_BYTES:10485760}
+    web-scraping:
+      timeout-ms: ${OFFICE_WEB_SCRAPING_TIMEOUT_MS:10000}
+      max-body-size: ${OFFICE_WEB_SCRAPING_MAX_BODY_SIZE:200000}
 
 logging:
   level:

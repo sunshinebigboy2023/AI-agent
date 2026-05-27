@@ -1,10 +1,10 @@
 package com.yupi.yuaiagent.rag;
 
-import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.FileSystemUtils;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -15,7 +15,6 @@ import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -28,24 +27,25 @@ public class KnowledgeFileService {
     private static final long DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
     private final Path storageDir;
-    private final VectorStore vectorStore;
     private final long maxUploadBytes;
+    private final KnowledgeIndexService knowledgeIndexService;
 
+    @Autowired
     public KnowledgeFileService(
             @Value("${office.knowledge.storage-dir:${user.dir}/tmp/knowledge}") String storageDir,
             @Value("${office.knowledge.max-upload-bytes:10485760}") long maxUploadBytes,
-            VectorStore vectorStore
+            KnowledgeIndexService knowledgeIndexService
     ) {
-        this(Path.of(storageDir), vectorStore, maxUploadBytes);
+        this(Path.of(storageDir), knowledgeIndexService, maxUploadBytes);
     }
 
-    KnowledgeFileService(Path storageDir, VectorStore vectorStore) {
-        this(storageDir, vectorStore, DEFAULT_MAX_UPLOAD_BYTES);
+    KnowledgeFileService(Path storageDir, KnowledgeIndexService knowledgeIndexService) {
+        this(storageDir, knowledgeIndexService, DEFAULT_MAX_UPLOAD_BYTES);
     }
 
-    KnowledgeFileService(Path storageDir, VectorStore vectorStore, long maxUploadBytes) {
+    KnowledgeFileService(Path storageDir, KnowledgeIndexService knowledgeIndexService, long maxUploadBytes) {
         this.storageDir = storageDir;
-        this.vectorStore = vectorStore;
+        this.knowledgeIndexService = knowledgeIndexService;
         this.maxUploadBytes = maxUploadBytes;
     }
 
@@ -69,6 +69,10 @@ public class KnowledgeFileService {
         Files.copy(file.getInputStream(), savedFile, StandardCopyOption.REPLACE_EXISTING);
 
         String content = Files.readString(savedFile, StandardCharsets.UTF_8);
+        if (!StringUtils.hasText(content)) {
+            FileSystemUtils.deleteRecursively(fileDir);
+            throw new IllegalArgumentException("Uploaded file is empty after decoding.");
+        }
         KnowledgeFileInfo info = new KnowledgeFileInfo(
                 fileId,
                 originalFilename,
@@ -77,9 +81,14 @@ public class KnowledgeFileService {
                 "indexed",
                 Instant.now().toEpochMilli()
         );
-        saveMetadata(fileDir, info);
-        indexFile(info, content);
-        return info;
+        try {
+            saveMetadata(fileDir, info);
+            knowledgeIndexService.indexFile(info, content);
+            return info;
+        } catch (Exception e) {
+            FileSystemUtils.deleteRecursively(fileDir);
+            throw new IOException("Failed to index uploaded knowledge file: " + e.getMessage(), e);
+        }
     }
 
     public List<KnowledgeFileInfo> listFiles() throws IOException {
@@ -105,21 +114,8 @@ public class KnowledgeFileService {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("fileId is invalid.");
         }
-        vectorStore.delete(List.of(fileId));
+        knowledgeIndexService.deleteFileIndex(fileId);
         FileSystemUtils.deleteRecursively(storageDir.resolve(fileId));
-    }
-
-    private void indexFile(KnowledgeFileInfo info, String content) {
-        Document document = new Document(
-                info.id(),
-                content,
-                Map.of(
-                        "fileId", info.id(),
-                        "filename", info.originalFilename(),
-                        "category", "uploaded"
-                )
-        );
-        vectorStore.add(List.of(document));
     }
 
     private void saveMetadata(Path fileDir, KnowledgeFileInfo info) throws IOException {

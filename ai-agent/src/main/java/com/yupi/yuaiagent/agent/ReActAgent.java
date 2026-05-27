@@ -38,13 +38,16 @@ public abstract class ReActAgent extends BaseAgent {
             // 先思考
             boolean shouldAct = think();
             if (!shouldAct) {
+                recordStep(getCurrentStep(), com.yupi.yuaiagent.agent.model.AgentStepPhase.FINAL,
+                        null, null, "思考完成 - 无需行动", null, null);
                 return "思考完成 - 无需行动";
             }
             // 再行动
             return act();
         } catch (Exception e) {
-            // 记录异常日志
-            e.printStackTrace();
+            log.error("步骤执行失败", e);
+            recordStep(getCurrentStep(), com.yupi.yuaiagent.agent.model.AgentStepPhase.ERROR,
+                    null, null, null, null, e.getMessage());
             return "步骤执行失败：" + e.getMessage();
         }
     }

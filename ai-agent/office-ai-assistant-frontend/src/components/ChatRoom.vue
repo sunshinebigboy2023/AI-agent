@@ -29,16 +29,21 @@
         v-model="inputMessage"
         class="input-box"
         :placeholder="placeholder"
-        :disabled="connectionStatus === 'connecting'"
+        :disabled="disabledInput"
         rows="1"
         @keydown.enter.exact.prevent="sendMessage"
       ></textarea>
-      <button
-        class="send-button"
-        type="submit"
-        :disabled="connectionStatus === 'connecting' || !inputMessage.trim()"
-      >
+      <button class="send-button" type="submit" :disabled="disabledInput || !inputMessage.trim()">
         发送
+      </button>
+      <button
+        v-if="canStop"
+        class="stop-button"
+        type="button"
+        :disabled="connectionStatus !== 'connecting'"
+        @click="emit('stop-stream')"
+      >
+        停止
       </button>
     </form>
   </section>
@@ -60,10 +65,14 @@ const props = defineProps({
   aiType: {
     type: String,
     default: 'office'
+  },
+  canStop: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['send-message'])
+const emit = defineEmits(['send-message', 'stop-stream'])
 
 const inputMessage = ref('')
 const messagesContainer = ref(null)
@@ -73,6 +82,8 @@ const placeholder = computed(() => {
     ? '描述要执行的任务，例如：调研一个主题并生成报告'
     : '输入办公需求，例如：帮我写一封项目跟进邮件'
 })
+
+const disabledInput = computed(() => props.connectionStatus === 'connecting')
 
 const sendMessage = () => {
   const message = inputMessage.value.trim()
@@ -185,7 +196,7 @@ onMounted(scrollToBottom)
 
 .chat-input-container {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 82px;
+  grid-template-columns: minmax(0, 1fr) 82px 82px;
   gap: 12px;
   padding: 14px;
   border-top: 1px solid #e2e8f0;
@@ -219,11 +230,21 @@ onMounted(scrollToBottom)
   font-weight: 700;
 }
 
+.stop-button {
+  min-height: 44px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #b91c1c;
+  background: #fff;
+  font-weight: 700;
+}
+
 .send-button:hover:not(:disabled) {
   background: #115e59;
 }
 
 .send-button:disabled,
+.stop-button:disabled,
 .input-box:disabled {
   opacity: 0.58;
 }

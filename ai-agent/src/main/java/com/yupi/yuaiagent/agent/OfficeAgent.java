@@ -4,12 +4,20 @@ import com.yupi.yuaiagent.advisor.MyLoggerAdvisor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
 @Component
+@Scope("prototype")
 public class OfficeAgent extends ToolCallAgent {
 
-    public OfficeAgent(ToolCallback[] allTools, ChatModel dashscopeChatModel) {
+    public OfficeAgent(
+            ToolCallback[] allTools,
+            ChatModel dashscopeChatModel,
+            @Value("${office.agent.max-steps:20}") int maxSteps,
+            @Value("${office.agent.max-observation-length:4000}") int maxObservationLength
+    ) {
         super(allTools);
         this.setName("officeAgent");
         this.setSystemPrompt(String.join("\n",
@@ -23,7 +31,8 @@ public class OfficeAgent extends ToolCallAgent {
                 "After each tool call, summarize the result clearly and decide the next useful action.",
                 "When the task is complete, provide a concise final answer and use the terminate tool/function call."
         ));
-        this.setMaxSteps(20);
+        this.setMaxSteps(maxSteps);
+        this.setMaxObservationLength(maxObservationLength);
         ChatClient chatClient = ChatClient.builder(dashscopeChatModel)
                 .defaultAdvisors(new MyLoggerAdvisor())
                 .build();

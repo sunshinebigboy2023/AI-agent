@@ -3,8 +3,8 @@ package com.yupi.yuaiagent.controller;
 import com.yupi.yuaiagent.agent.OfficeAgent;
 import com.yupi.yuaiagent.app.OfficeAssistantApp;
 import jakarta.annotation.Resource;
-import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,59 +12,92 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
+import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/ai")
 public class AiController {
 
-    private static final int MAX_MESSAGE_LENGTH = 8000;
+    @Value("${office.chat.max-message-length:8000}")
+    private int maxMessageLength;
 
     @Resource
     private OfficeAssistantApp officeAssistantApp;
 
     @Resource
-    private ToolCallback[] allTools;
-
-    @Resource
-    private ChatModel dashscopeChatModel;
+    private ObjectProvider<OfficeAgent> officeAgentProvider;
 
     @GetMapping("/office_app/chat/sync")
     public String doChatWithOfficeAssistantAppSync(
             @RequestParam String message,
-            @RequestParam(defaultValue = "default") String chatId
+            @RequestParam(required = false) String chatId
     ) {
         validateMessage(message);
-        return officeAssistantApp.doChat(message, chatId);
+        return officeAssistantApp.doChat(message, ensureChatId(chatId));
     }
 
     @GetMapping(value = "/office_app/chat/sse", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> doChatWithOfficeAssistantAppSSE(
             @RequestParam String message,
-            @RequestParam(defaultValue = "default") String chatId
+            @RequestParam(required = false) String chatId
     ) {
         validateMessage(message);
-        return officeAssistantApp.doChatWithRagByStream(message, chatId);
+        return officeAssistantApp.doChatWithRagByStream(message, ensureChatId(chatId));
     }
 
     @GetMapping(value = "/office_app/chat/rag/sse", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> doChatWithOfficeAssistantAppRagSSE(
             @RequestParam String message,
-            @RequestParam(defaultValue = "default") String chatId
+            @RequestParam(required = false) String chatId
     ) {
         validateMessage(message);
-        return officeAssistantApp.doChatWithRagByStream(message, chatId);
+        return officeAssistantApp.doChatWithRagByStream(message, ensureChatId(chatId));
+    }
+
+    @GetMapping(value = "/office_app/chat/rag/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter doChatWithOfficeAssistantAppStructuredSSE(
+            @RequestParam String message,
+            @RequestParam(required = false) String chatId
+    ) {
+        validateMessage(message);
+        String resolvedChatId = ensureChatId(chatId);
+        SseEmitter emitter = new SseEmitter(180000L);
+        Disposable disposable = officeAssistantApp.doChatWithRagByStream(message, resolvedChatId)
+                .subscribe(chunk -> sendEvent(emitter, "message", Map.of("content", chunk)),
+                        error -> {
+                            sendEvent(emitter, "error", Map.of("message", error.getMessage()));
+                            emitter.complete();
+                        },
+                        () -> {
+                            sendEvent(emitter, "done", Map.of("chatId", resolvedChatId));
+                            emitter.complete();
+                        });
+        emitter.onCompletion(disposable::dispose);
+        emitter.onTimeout(disposable::dispose);
+        return emitter;
+    }
+
+    @GetMapping("/office_app/chat/rag/debug")
+    public OfficeAssistantApp.RagDebugResponse doChatWithOfficeAssistantAppRagDebug(
+            @RequestParam String message,
+            @RequestParam(required = false) String chatId
+    ) {
+        validateMessage(message);
+        return officeAssistantApp.doChatWithRagDebug(message, ensureChatId(chatId));
     }
 
     @GetMapping(value = "/office_app/chat/server_sent_event")
     public Flux<ServerSentEvent<String>> doChatWithOfficeAssistantAppServerSentEvent(
             @RequestParam String message,
-            @RequestParam(defaultValue = "default") String chatId
+            @RequestParam(required = false) String chatId
     ) {
         validateMessage(message);
-        return officeAssistantApp.doChatByStream(message, chatId)
+        return officeAssistantApp.doChatByStream(message, ensureChatId(chatId))
                 .map(chunk -> ServerSentEvent.<String>builder()
                         .data(chunk)
                         .build());
@@ -73,11 +106,12 @@ public class AiController {
     @GetMapping(value = "/office_app/chat/sse_emitter")
     public SseEmitter doChatWithOfficeAssistantAppServerSseEmitter(
             @RequestParam String message,
-            @RequestParam(defaultValue = "default") String chatId
+            @RequestParam(required = false) String chatId
     ) {
         validateMessage(message);
+        String resolvedChatId = ensureChatId(chatId);
         SseEmitter sseEmitter = new SseEmitter(180000L);
-        officeAssistantApp.doChatByStream(message, chatId)
+        Disposable disposable = officeAssistantApp.doChatByStream(message, resolvedChatId)
                 .subscribe(chunk -> {
                     try {
                         sseEmitter.send(chunk);
@@ -85,22 +119,41 @@ public class AiController {
                         sseEmitter.completeWithError(e);
                     }
                 }, sseEmitter::completeWithError, sseEmitter::complete);
+        sseEmitter.onCompletion(disposable::dispose);
+        sseEmitter.onTimeout(disposable::dispose);
         return sseEmitter;
     }
 
     @GetMapping("/office-agent/chat")
     public SseEmitter doChatWithOfficeAgent(@RequestParam String message) {
         validateMessage(message);
-        OfficeAgent officeAgent = new OfficeAgent(allTools, dashscopeChatModel);
-        return officeAgent.runStream(message);
+        return officeAgentProvider.getObject().runStream(message);
+    }
+
+    @GetMapping(value = "/office-agent/chat/stream-with-steps", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter doChatWithOfficeAgentWithSteps(@RequestParam String message) {
+        validateMessage(message);
+        return officeAgentProvider.getObject().runStructuredStream(message);
     }
 
     private void validateMessage(String message) {
         if (message == null || message.isBlank()) {
             throw new IllegalArgumentException("message is required.");
         }
-        if (message.length() > MAX_MESSAGE_LENGTH) {
-            throw new IllegalArgumentException("message must be no longer than " + MAX_MESSAGE_LENGTH + " characters.");
+        if (message.length() > maxMessageLength) {
+            throw new IllegalArgumentException("message must be no longer than " + maxMessageLength + " characters.");
+        }
+    }
+
+    private String ensureChatId(String chatId) {
+        return (chatId == null || chatId.isBlank()) ? "chat_" + UUID.randomUUID() : chatId;
+    }
+
+    private void sendEvent(SseEmitter emitter, String eventName, Object data) {
+        try {
+            emitter.send(SseEmitter.event().name(eventName).data(data));
+        } catch (IOException e) {
+            emitter.completeWithError(e);
         }
     }
 }

@@ -26,6 +26,7 @@
             {{ uploading ? '上传中' : '上传并索引' }}
           </button>
         </form>
+        <p v-if="selectedFile" class="file-hint">待上传：{{ selectedFile.name }} · {{ formatSize(selectedFile.size) }}</p>
         <p v-if="notice" class="notice" :class="{ error: noticeType === 'error' }">{{ notice }}</p>
       </section>
 
@@ -121,6 +122,9 @@ const uploadSelectedFile = async () => {
 }
 
 const deleteFile = async (fileId) => {
+  if (!window.confirm('确认删除这个知识文件及其索引分块吗？')) {
+    return
+  }
   deletingId.value = fileId
   try {
     await deleteKnowledgeFile(fileId)
@@ -269,6 +273,12 @@ onMounted(loadFiles)
   border-radius: 8px;
   color: #0f766e;
   background: #ecfdf5;
+}
+
+.file-hint {
+  grid-column: 1 / -1;
+  color: #64748b;
+  font-size: 13px;
 }
 
 .notice.error {

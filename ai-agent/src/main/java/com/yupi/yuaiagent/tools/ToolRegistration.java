@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -42,9 +43,28 @@ public class ToolRegistration {
     @Value("${office.agent.enable-terminal-tool:false}")
     private boolean enableTerminalTool;
 
+    @Value("${office.agent.max-observation-length:4000}")
+    private int maxObservationLength;
+
+    @Value("${office.tools.workspace-dir:${user.dir}/tmp/workspace}")
+    private String workspaceDir;
+
+    @Value("${office.tools.download.max-bytes:10485760}")
+    private long maxDownloadBytes;
+
+    @Value("${office.tools.web-scraping.timeout-ms:10000}")
+    private int webScrapingTimeoutMs;
+
+    @Value("${office.tools.web-scraping.max-body-size:200000}")
+    private int webScrapingMaxBodySize;
+
     @Bean
     public ToolCallback[] allTools() {
-        FileOperationTool fileOperationTool = new FileOperationTool();
+        ToolExecutionSupport toolExecutionSupport = new ToolExecutionSupport(
+                Path.of(workspaceDir),
+                maxObservationLength
+        );
+        FileOperationTool fileOperationTool = new FileOperationTool(toolExecutionSupport);
         WebSearchTool webSearchTool = new WebSearchTool(
                 aliyunOpenSearchHost,
                 aliyunOpenSearchWorkspace,
@@ -53,11 +73,12 @@ public class ToolRegistration {
                 aliyunOpenSearchTopK,
                 aliyunOpenSearchContentType,
                 searxngBaseUrl,
-                searxngTopK
+                searxngTopK,
+                toolExecutionSupport
         );
-        WebScrapingTool webScrapingTool = new WebScrapingTool();
-        ResourceDownloadTool resourceDownloadTool = new ResourceDownloadTool();
-        PDFGenerationTool pdfGenerationTool = new PDFGenerationTool();
+        WebScrapingTool webScrapingTool = new WebScrapingTool(toolExecutionSupport, webScrapingTimeoutMs, webScrapingMaxBodySize);
+        ResourceDownloadTool resourceDownloadTool = new ResourceDownloadTool(toolExecutionSupport, maxDownloadBytes);
+        PDFGenerationTool pdfGenerationTool = new PDFGenerationTool(toolExecutionSupport);
         TerminateTool terminateTool = new TerminateTool();
         List<Object> tools = new ArrayList<>();
         tools.add(fileOperationTool);
@@ -67,7 +88,7 @@ public class ToolRegistration {
         tools.add(pdfGenerationTool);
         tools.add(terminateTool);
         if (enableTerminalTool) {
-            tools.add(new TerminalOperationTool());
+            tools.add(new TerminalOperationTool(toolExecutionSupport));
         }
         return ToolCallbacks.from(tools.toArray());
     }

@@ -19,16 +19,14 @@ public class OfficeVectorStoreConfig {
     @Resource
     private MyKeywordEnricher myKeywordEnricher;
 
-    @Resource
-    private KnowledgeDocumentLoader knowledgeDocumentLoader;
-
     @Bean
     VectorStore officeVectorStore(EmbeddingModel dashscopeEmbeddingModel) throws Exception {
         SimpleVectorStore simpleVectorStore = SimpleVectorStore.builder(dashscopeEmbeddingModel).build();
         List<Document> documentList = officeDocumentLoader.loadMarkdowns();
         List<Document> enrichedDocuments = myKeywordEnricher.enrichDocuments(documentList);
-        simpleVectorStore.add(enrichedDocuments);
-        simpleVectorStore.add(knowledgeDocumentLoader.loadUploadedDocuments());
+        if (!enrichedDocuments.isEmpty()) {
+            simpleVectorStore.add(enrichedDocuments);
+        }
         return simpleVectorStore;
     }
 }

@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
 import com.yupi.yuaiagent.agent.model.AgentState;
+import com.yupi.yuaiagent.agent.model.AgentStepPhase;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -83,6 +84,7 @@ public class ToolCallAgent extends ReActAgent {
             String result = assistantMessage.getText();
             log.info(getName() + "的思考：" + result);
             log.info(getName() + "选择了 " + toolCallList.size() + " 个工具来使用");
+            recordStep(getCurrentStep(), AgentStepPhase.THINK, null, null, null, result, null);
             String toolCallInfo = toolCallList.stream()
                     .map(toolCall -> String.format("工具名称：%s，参数：%s", toolCall.name(), toolCall.arguments()))
                     .collect(Collectors.joining("\n"));
@@ -98,6 +100,7 @@ public class ToolCallAgent extends ReActAgent {
             }
         } catch (Exception e) {
             log.error(getName() + "的思考过程遇到了问题：" + e.getMessage());
+            recordStep(getCurrentStep(), AgentStepPhase.ERROR, null, null, null, null, e.getMessage());
             getMessageList().add(new AssistantMessage("处理时遇到了错误：" + e.getMessage()));
             return false;
         }
@@ -113,6 +116,10 @@ public class ToolCallAgent extends ReActAgent {
         if (!toolCallChatResponse.hasToolCalls()) {
             return "没有工具需要调用";
         }
+        AssistantMessage assistantMessage = toolCallChatResponse.getResult().getOutput();
+        assistantMessage.getToolCalls().forEach(toolCall ->
+                recordStep(getCurrentStep(), AgentStepPhase.ACT, toolCall.name(), toolCall.arguments(), null, null, null)
+        );
         // 调用工具
         Prompt prompt = new Prompt(getMessageList(), this.chatOptions);
         ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, toolCallChatResponse);
@@ -129,6 +136,10 @@ public class ToolCallAgent extends ReActAgent {
         String results = toolResponseMessage.getResponses().stream()
                 .map(response -> "工具 " + response.name() + " 返回的结果：" + response.responseData())
                 .collect(Collectors.joining("\n"));
+        toolResponseMessage.getResponses().forEach(response ->
+                recordStep(getCurrentStep(), AgentStepPhase.OBSERVATION,
+                        response.name(), null, response.responseData(), null, null)
+        );
         log.info(results);
         return results;
     }

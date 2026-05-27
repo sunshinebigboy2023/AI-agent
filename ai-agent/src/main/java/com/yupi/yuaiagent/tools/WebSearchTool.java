@@ -27,6 +27,7 @@ public class WebSearchTool {
     private final String contentType;
     private final String searxngBaseUrl;
     private final int searxngTopK;
+    private final ToolExecutionSupport toolExecutionSupport;
 
     public WebSearchTool(
             String host,
@@ -36,7 +37,8 @@ public class WebSearchTool {
             int topK,
             String contentType,
             String searxngBaseUrl,
-            int searxngTopK
+            int searxngTopK,
+            ToolExecutionSupport toolExecutionSupport
     ) {
         this.host = removeTrailingSlash(host);
         this.workspace = StrUtil.blankToDefault(workspace, "default");
@@ -46,26 +48,36 @@ public class WebSearchTool {
         this.contentType = StrUtil.blankToDefault(contentType, "snippet");
         this.searxngBaseUrl = removeTrailingSlash(searxngBaseUrl);
         this.searxngTopK = Math.max(1, Math.min(searxngTopK, 10));
+        this.toolExecutionSupport = toolExecutionSupport;
     }
 
     @Tool(description = "Search the web by using self-hosted SearXNG first, with Alibaba Cloud OpenSearch as fallback")
     public String searchWeb(
             @ToolParam(description = "Search query keyword") String query) {
-        if (StrUtil.isNotBlank(searxngBaseUrl)) {
-            String searxngResult = searchWithSearxng(query);
-            if (StrUtil.isNotBlank(searxngResult)) {
-                return searxngResult;
+        return toolExecutionSupport.execute("WebSearchTool.searchWeb", query, () -> {
+            if (StrUtil.isNotBlank(searxngBaseUrl)) {
+                String searxngResult = searchWithSearxng(query);
+                if (StrUtil.isNotBlank(searxngResult)) {
+                    return searxngResult;
+                }
             }
-        }
-        if (StrUtil.isBlank(host) || StrUtil.isBlank(apiKey)) {
-            return "联网搜索未配置，请设置 SEARXNG_BASE_URL，或设置 ALIYUN_OPENSEARCH_HOST 和 ALIYUN_OPENSEARCH_API_KEY。";
-        }
-        return searchWithAliyunOpenSearch(query);
+            if (StrUtil.isBlank(host) || StrUtil.isBlank(apiKey)) {
+                return "联网搜索未配置，请设置 SEARXNG_BASE_URL，或设置 ALIYUN_OPENSEARCH_HOST 和 ALIYUN_OPENSEARCH_API_KEY。";
+            }
+            if (host.contains("your-region.opensearch.aliyuncs.com")
+                    || apiKey.contains("replace-with-your-opensearch-api-key")) {
+                return "SearXNG 搜索不可用，阿里云 OpenSearch 仍是占位配置。请检查 SearXNG 服务或填写真实阿里云 OpenSearch 配置。";
+            }
+            return searchWithAliyunOpenSearch(query);
+        });
     }
 
     private String searchWithSearxng(String query) {
         try {
             try (HttpResponse response = HttpRequest.get(searxngBaseUrl + "/search")
+                    .header("X-Real-IP", "127.0.0.1")
+                    .header("X-Forwarded-For", "127.0.0.1")
+                    .header("User-Agent", "office-ai-agent/1.0")
                     .form(Map.of(
                             "q", query,
                             "format", "json"

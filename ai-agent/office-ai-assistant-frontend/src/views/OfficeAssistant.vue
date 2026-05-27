@@ -25,8 +25,10 @@
         class="chat-panel"
         :messages="messages"
         :connection-status="connectionStatus"
+        :can-stop="true"
         ai-type="office"
         @send-message="sendMessage"
+        @stop-stream="stopStream"
       />
     </section>
 
@@ -39,7 +41,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import ChatRoom from '../components/ChatRoom.vue'
 import AppFooter from '../components/AppFooter.vue'
-import { chatWithOfficeAssistant } from '../api'
+import { chatWithOfficeAssistantStructured } from '../api'
 
 const router = useRouter()
 const messages = ref([])
@@ -70,18 +72,28 @@ const sendMessage = (message) => {
   const aiMessageIndex = messages.value.length
   addMessage('', false)
   connectionStatus.value = 'connecting'
-  eventSource = chatWithOfficeAssistant(message, chatId.value)
+  eventSource = chatWithOfficeAssistantStructured(message, chatId.value)
 
-  eventSource.onmessage = (event) => {
-    const data = event.data
-    if (data && data !== '[DONE]' && aiMessageIndex < messages.value.length) {
-      messages.value[aiMessageIndex].content += data
+  eventSource.addEventListener('message', (event) => {
+    const payload = JSON.parse(event.data)
+    if (payload.content && aiMessageIndex < messages.value.length) {
+      messages.value[aiMessageIndex].content += payload.content
     }
-    if (data === '[DONE]') {
-      connectionStatus.value = 'disconnected'
-      eventSource.close()
+  })
+
+  eventSource.addEventListener('done', () => {
+    connectionStatus.value = 'disconnected'
+    eventSource?.close()
+  })
+
+  eventSource.addEventListener('error', (event) => {
+    const payload = event.data ? JSON.parse(event.data) : { message: '连接中断，请稍后重试。' }
+    if (aiMessageIndex < messages.value.length && !messages.value[aiMessageIndex].content) {
+      messages.value[aiMessageIndex].content = payload.message
     }
-  }
+    connectionStatus.value = 'error'
+    eventSource?.close()
+  })
 
   eventSource.onerror = () => {
     const hasContent = aiMessageIndex < messages.value.length && messages.value[aiMessageIndex].content
@@ -90,6 +102,15 @@ const sendMessage = (message) => {
       messages.value[aiMessageIndex].content = '连接中断，请检查后端服务或稍后重试。'
     }
     eventSource.close()
+  }
+}
+
+const stopStream = () => {
+  if (eventSource) {
+    eventSource.close()
+    eventSource = null
+    connectionStatus.value = 'disconnected'
+    addMessage('本次生成已手动停止。', false, 'system')
   }
 }
 

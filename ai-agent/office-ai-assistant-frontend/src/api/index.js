@@ -21,8 +21,16 @@ export const chatWithOfficeAssistant = (message, chatId) => {
   return connectSSE('/ai/office_app/chat/rag/sse', { message, chatId })
 }
 
+export const chatWithOfficeAssistantStructured = (message, chatId) => {
+  return connectSSE('/ai/office_app/chat/rag/stream', { message, chatId })
+}
+
 export const chatWithOfficeAgent = (message) => {
   return connectSSE('/ai/office-agent/chat', { message })
+}
+
+export const chatWithOfficeAgentStructured = (message) => {
+  return connectSSE('/ai/office-agent/chat/stream-with-steps', { message })
 }
 
 export const listKnowledgeFiles = () => {
@@ -50,7 +58,9 @@ export const healthCheck = () => {
 export default {
   request,
   chatWithOfficeAssistant,
+  chatWithOfficeAssistantStructured,
   chatWithOfficeAgent,
+  chatWithOfficeAgentStructured,
   listKnowledgeFiles,
   uploadKnowledgeFile,
   deleteKnowledgeFile,
