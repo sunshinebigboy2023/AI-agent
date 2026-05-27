@@ -28,6 +28,10 @@ public class KnowledgeDocumentSplitter {
     }
 
     public List<Document> split(KnowledgeFileInfo fileInfo, String content) {
+        return split(fileInfo.clientId(), fileInfo, content);
+    }
+
+    public List<Document> split(String clientId, KnowledgeFileInfo fileInfo, String content) {
         String normalized = normalizeContent(content);
         if (!StringUtils.hasText(normalized)) {
             return List.of();
@@ -44,6 +48,7 @@ public class KnowledgeDocumentSplitter {
         for (int i = 0; i < chunks.size(); i++) {
             Map<String, Object> metadata = new LinkedHashMap<>();
             metadata.put("fileId", fileInfo.id());
+            metadata.put("clientId", clientId);
             metadata.put("filename", fileInfo.originalFilename());
             metadata.put("originalFilename", fileInfo.originalFilename());
             metadata.put("chunkIndex", i);
@@ -54,12 +59,19 @@ public class KnowledgeDocumentSplitter {
             metadata.put("createTime", now);
             metadata.put("updateTime", now);
             documents.add(new Document(
-                    fileInfo.id() + "_chunk_" + i,
+                    buildDocumentId(clientId, fileInfo.id(), i),
                     chunks.get(i),
                     metadata
             ));
         }
         return documents;
+    }
+
+    private String buildDocumentId(String clientId, String fileId, int chunkIndex) {
+        if (!StringUtils.hasText(clientId)) {
+            return fileId + "_chunk_" + chunkIndex;
+        }
+        return clientId + "_" + fileId + "_chunk_" + chunkIndex;
     }
 
     private List<String> splitMarkdownBlocks(String content) {

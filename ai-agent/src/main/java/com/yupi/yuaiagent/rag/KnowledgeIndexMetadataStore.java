@@ -25,15 +25,20 @@ public class KnowledgeIndexMetadataStore {
     private final Path metadataPath;
 
     public KnowledgeIndexMetadataStore(@Value("${office.knowledge.storage-dir:${user.dir}/tmp/knowledge}") String storageDir) {
-        this(Path.of(storageDir));
-    }
-
-    KnowledgeIndexMetadataStore(Path storageDir) {
-        this.metadataPath = storageDir.resolve(METADATA_FILENAME);
+        this.metadataPath = Path.of(storageDir).resolve(METADATA_FILENAME);
     }
 
     public synchronized List<String> getChunkIds(String fileId) {
         return new ArrayList<>(loadMappings().getOrDefault(fileId, List.of()));
+    }
+
+    public synchronized List<String> getChunkIds(String clientId, String fileId) {
+        Map<String, List<String>> mappings = loadMappings();
+        String key = buildKey(clientId, fileId);
+        if (mappings.containsKey(key)) {
+            return new ArrayList<>(mappings.get(key));
+        }
+        return new ArrayList<>(mappings.getOrDefault(fileId, List.of()));
     }
 
     public synchronized void saveChunkIds(String fileId, List<String> chunkIds) {
@@ -42,8 +47,22 @@ public class KnowledgeIndexMetadataStore {
         persist(mappings);
     }
 
+    public synchronized void saveChunkIds(String clientId, String fileId, List<String> chunkIds) {
+        Map<String, List<String>> mappings = loadMappings();
+        mappings.put(buildKey(clientId, fileId), List.copyOf(chunkIds));
+        mappings.remove(fileId);
+        persist(mappings);
+    }
+
     public synchronized void remove(String fileId) {
         Map<String, List<String>> mappings = loadMappings();
+        mappings.remove(fileId);
+        persist(mappings);
+    }
+
+    public synchronized void remove(String clientId, String fileId) {
+        Map<String, List<String>> mappings = loadMappings();
+        mappings.remove(buildKey(clientId, fileId));
         mappings.remove(fileId);
         persist(mappings);
     }
@@ -87,5 +106,9 @@ public class KnowledgeIndexMetadataStore {
         } catch (IOException e) {
             throw new IllegalStateException("Failed to persist knowledge index metadata", e);
         }
+    }
+
+    private String buildKey(String clientId, String fileId) {
+        return clientId + ":" + fileId;
     }
 }

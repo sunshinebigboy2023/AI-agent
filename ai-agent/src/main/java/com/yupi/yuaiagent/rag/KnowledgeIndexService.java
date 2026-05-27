@@ -1,6 +1,5 @@
 package com.yupi.yuaiagent.rag;
 
-import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
@@ -16,72 +15,63 @@ import java.util.List;
 @Slf4j
 public class KnowledgeIndexService {
 
-    @Resource
-    private VectorStore vectorStore;
+    private final VectorStore vectorStore;
+    private final KnowledgeDocumentSplitter knowledgeDocumentSplitter;
+    private final KnowledgeDocumentLoader knowledgeDocumentLoader;
+    private final KnowledgeIndexMetadataStore knowledgeIndexMetadataStore;
+    private final boolean rebuildOnStartup;
 
-    @Resource
-    private KnowledgeDocumentSplitter knowledgeDocumentSplitter;
-
-    @Resource
-    private KnowledgeDocumentLoader knowledgeDocumentLoader;
-
-    @Resource
-    private KnowledgeIndexMetadataStore knowledgeIndexMetadataStore;
-
-    @Value("${office.knowledge.rebuild-on-startup:true}")
-    private boolean rebuildOnStartup;
-
-    public KnowledgeIndexService() {
-    }
-
-    KnowledgeIndexService(
+    public KnowledgeIndexService(
             VectorStore vectorStore,
             KnowledgeDocumentSplitter knowledgeDocumentSplitter,
             KnowledgeDocumentLoader knowledgeDocumentLoader,
-            KnowledgeIndexMetadataStore knowledgeIndexMetadataStore
+            KnowledgeIndexMetadataStore knowledgeIndexMetadataStore,
+            @Value("${office.knowledge.rebuild-on-startup:true}") boolean rebuildOnStartup
     ) {
         this.vectorStore = vectorStore;
         this.knowledgeDocumentSplitter = knowledgeDocumentSplitter;
         this.knowledgeDocumentLoader = knowledgeDocumentLoader;
         this.knowledgeIndexMetadataStore = knowledgeIndexMetadataStore;
+        this.rebuildOnStartup = rebuildOnStartup;
     }
 
-    public List<Document> indexFile(KnowledgeFileInfo fileInfo, String content) {
-        List<Document> documents = knowledgeDocumentSplitter.split(fileInfo, content);
+    public List<Document> indexFile(String clientId, KnowledgeFileInfo fileInfo, String content) {
+        List<Document> documents = knowledgeDocumentSplitter.split(clientId, fileInfo, content);
         if (documents.isEmpty()) {
             log.warn("No chunks generated for knowledge file {}", fileInfo.originalFilename());
-            knowledgeIndexMetadataStore.saveChunkIds(fileInfo.id(), List.of());
+            knowledgeIndexMetadataStore.saveChunkIds(clientId, fileInfo.id(), List.of());
             return List.of();
         }
-        List<String> existingChunkIds = knowledgeIndexMetadataStore.getChunkIds(fileInfo.id());
+        List<String> existingChunkIds = knowledgeIndexMetadataStore.getChunkIds(clientId, fileInfo.id());
         if (!existingChunkIds.isEmpty()) {
             vectorStore.delete(existingChunkIds);
         }
         vectorStore.add(documents);
         knowledgeIndexMetadataStore.saveChunkIds(
+                clientId,
                 fileInfo.id(),
                 documents.stream().map(Document::getId).toList()
         );
         return documents;
     }
 
-    public void deleteFileIndex(String fileId) {
-        List<String> chunkIds = knowledgeIndexMetadataStore.getChunkIds(fileId);
+    public void deleteFileIndex(String clientId, String fileId) {
+        List<String> chunkIds = knowledgeIndexMetadataStore.getChunkIds(clientId, fileId);
         if (!chunkIds.isEmpty()) {
             vectorStore.delete(chunkIds);
         }
-        knowledgeIndexMetadataStore.remove(fileId);
+        knowledgeIndexMetadataStore.remove(clientId, fileId);
     }
 
-    public List<String> listIndexedChunks(String fileId) {
-        return knowledgeIndexMetadataStore.getChunkIds(fileId);
+    public List<String> listIndexedChunks(String clientId, String fileId) {
+        return knowledgeIndexMetadataStore.getChunkIds(clientId, fileId);
     }
 
     public synchronized int rebuildAll() {
         int rebuiltCount = 0;
         for (KnowledgeDocumentLoader.StoredKnowledgeFile storedFile : knowledgeDocumentLoader.loadStoredFiles()) {
             try {
-                List<Document> documents = indexFile(storedFile.fileInfo(), storedFile.content());
+                List<Document> documents = indexFile(storedFile.fileInfo().clientId(), storedFile.fileInfo(), storedFile.content());
                 if (!documents.isEmpty()) {
                     rebuiltCount++;
                 }

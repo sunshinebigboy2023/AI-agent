@@ -41,7 +41,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import ChatRoom from '../components/ChatRoom.vue'
 import AppFooter from '../components/AppFooter.vue'
-import { chatWithOfficeAssistantStructured } from '../api'
+import { chatWithOfficeAssistantStructured, mapSseErrorMessage } from '../api'
 
 const router = useRouter()
 const messages = ref([])
@@ -88,18 +88,21 @@ const sendMessage = (message) => {
 
   eventSource.addEventListener('error', (event) => {
     const payload = event.data ? JSON.parse(event.data) : { message: '连接中断，请稍后重试。' }
+    const message = mapSseErrorMessage(payload)
     if (aiMessageIndex < messages.value.length && !messages.value[aiMessageIndex].content) {
-      messages.value[aiMessageIndex].content = payload.message
+      messages.value[aiMessageIndex].content = message
     }
     connectionStatus.value = 'error'
     eventSource?.close()
   })
 
-  eventSource.onerror = () => {
+  eventSource.onerror = (event) => {
+    const payload = event?.data ? JSON.parse(event.data) : { message: '连接中断，请检查服务状态' }
+    const message = mapSseErrorMessage(payload, '连接中断，请检查服务状态')
     const hasContent = aiMessageIndex < messages.value.length && messages.value[aiMessageIndex].content
     connectionStatus.value = hasContent ? 'disconnected' : 'error'
     if (!hasContent && aiMessageIndex < messages.value.length) {
-      messages.value[aiMessageIndex].content = '连接中断，请检查后端服务或稍后重试。'
+      messages.value[aiMessageIndex].content = message
     }
     eventSource.close()
   }

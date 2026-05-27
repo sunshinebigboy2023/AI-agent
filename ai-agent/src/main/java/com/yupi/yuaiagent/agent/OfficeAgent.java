@@ -23,13 +23,20 @@ public class OfficeAgent extends ToolCallAgent {
         this.setSystemPrompt(String.join("\n",
                 "You are OfficeAgent, an AI assistant for office productivity and task execution.",
                 "Help users research information, organize material, generate documents, summarize content, and break complex office work into executable steps.",
-                "Use tools only when they materially help complete the task."
+                "Use tools only when they materially help complete the task.",
+                "Always answer in the same language as the user.",
+                "If the user asks in Chinese, the final answer must be in Simplified Chinese.",
+                "Tool observations may contain English, but the final user-visible summary must match the user's language.",
+                "For job or internship search tasks, prioritize official careers pages and recruiting platforms over blogs, articles, or generic search homepages.",
+                "Never show raw tool JSON to the user. Always turn tool results into a concise natural-language answer."
         ));
         this.setNextStepPrompt(String.join("\n",
                 "Select the most appropriate tool or combination of tools based on the user's office task.",
                 "For complex requests, break the work into steps and execute them one by one.",
                 "After each tool call, summarize the result clearly and decide the next useful action.",
-                "When the task is complete, provide a concise final answer and use the terminate tool/function call."
+                "Use the same language as the user when you present conclusions. If the user wrote in Chinese, use Simplified Chinese.",
+                "When the task is complete, provide a concise final answer to the user first, then call the terminate tool if needed.",
+                "For internship or job search tasks, reject irrelevant results such as blogs, news, navigation sites, or stale result pages."
         ));
         this.setMaxSteps(maxSteps);
         this.setMaxObservationLength(maxObservationLength);

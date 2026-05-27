@@ -24,14 +24,16 @@
       </article>
     </div>
 
-    <form class="chat-input-container" @submit.prevent="sendMessage">
+    <form class="chat-input-container" @submit="handleSubmit">
       <textarea
         v-model="inputMessage"
         class="input-box"
         :placeholder="placeholder"
         :disabled="disabledInput"
         rows="1"
-        @keydown.enter.exact.prevent="sendMessage"
+        @compositionstart="handleCompositionStart"
+        @compositionend="handleCompositionEnd"
+        @keydown="handleKeydown"
       ></textarea>
       <button class="send-button" type="submit" :disabled="disabledInput || !inputMessage.trim()">
         发送
@@ -52,6 +54,7 @@
 <script setup>
 import { ref, nextTick, watch, onMounted, computed } from 'vue'
 import AiAvatarFallback from './AiAvatarFallback.vue'
+import { useEnterToSend } from '../composables/useEnterToSend'
 
 const props = defineProps({
   messages: {
@@ -91,6 +94,13 @@ const sendMessage = () => {
   emit('send-message', message)
   inputMessage.value = ''
 }
+
+const {
+  handleCompositionStart,
+  handleCompositionEnd,
+  handleKeydown,
+  handleSubmit
+} = useEnterToSend(sendMessage)
 
 const formatTime = (timestamp) => {
   const date = new Date(timestamp)

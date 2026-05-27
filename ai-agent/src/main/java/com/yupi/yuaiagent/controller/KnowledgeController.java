@@ -2,8 +2,8 @@ package com.yupi.yuaiagent.controller;
 
 import com.yupi.yuaiagent.rag.KnowledgeFileInfo;
 import com.yupi.yuaiagent.rag.KnowledgeFileService;
-import jakarta.annotation.Resource;
 import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,21 +20,30 @@ import java.util.List;
 @RequestMapping("/knowledge/files")
 public class KnowledgeController {
 
-    @Resource
-    private KnowledgeFileService knowledgeFileService;
+    private final KnowledgeFileService knowledgeFileService;
+
+    public KnowledgeController(KnowledgeFileService knowledgeFileService) {
+        this.knowledgeFileService = knowledgeFileService;
+    }
 
     @GetMapping
-    public List<KnowledgeFileInfo> listFiles() throws IOException {
-        return knowledgeFileService.listFiles();
+    public List<KnowledgeFileInfo> listFiles(@RequestHeader(value = "X-Client-Id", required = false) String clientId) throws IOException {
+        return knowledgeFileService.listFiles(clientId);
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public KnowledgeFileInfo uploadFile(@RequestPart("file") MultipartFile file) throws IOException {
-        return knowledgeFileService.upload(file);
+    public KnowledgeFileInfo uploadFile(
+            @RequestHeader(value = "X-Client-Id", required = false) String clientId,
+            @RequestPart("file") MultipartFile file
+    ) throws IOException {
+        return knowledgeFileService.upload(clientId, file);
     }
 
     @DeleteMapping("/{fileId}")
-    public void deleteFile(@PathVariable String fileId) throws IOException {
-        knowledgeFileService.delete(fileId);
+    public void deleteFile(
+            @RequestHeader(value = "X-Client-Id", required = false) String clientId,
+            @PathVariable String fileId
+    ) throws IOException {
+        knowledgeFileService.delete(clientId, fileId);
     }
 }

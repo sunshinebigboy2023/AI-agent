@@ -54,6 +54,9 @@ public abstract class BaseAgent {
     // 工具结果最大长度
     private int maxObservationLength = 4000;
 
+    // 用户原始语言偏好
+    private String preferredResponseLanguage = "与用户问题相同的语言";
+
     private transient Consumer<AgentSseEvent> eventConsumer = event -> {};
 
     /**
@@ -73,21 +76,24 @@ public abstract class BaseAgent {
         // 2、执行，更改状态
         this.state = AgentState.RUNNING;
         this.stepRecords = new ArrayList<>();
+        this.preferredResponseLanguage = detectPreferredResponseLanguage(userPrompt);
         // 记录消息上下文
         messageList.add(new UserMessage(userPrompt));
         // 保存结果列表
         List<String> results = new ArrayList<>();
         try {
             // 执行循环
-            for (int i = 0; i < maxSteps && state != AgentState.FINISHED; i++) {
-                int stepNumber = i + 1;
-                currentStep = stepNumber;
-                log.info("Executing step {}/{}", stepNumber, maxSteps);
-                // 单步执行
-                String stepResult = step();
-                String result = "Step " + stepNumber + ": " + stepResult;
-                results.add(result);
-            }
+                for (int i = 0; i < maxSteps && state != AgentState.FINISHED; i++) {
+                    int stepNumber = i + 1;
+                    currentStep = stepNumber;
+                    log.info("Executing step {}/{}", stepNumber, maxSteps);
+                    // 单步执行
+                    String stepResult = step();
+                    if (StrUtil.isNotBlank(stepResult)) {
+                        String result = "Step " + stepNumber + ": " + stepResult;
+                        results.add(result);
+                    }
+                }
             // 检查是否超出步骤限制
             if (currentStep >= maxSteps) {
                 state = AgentState.FINISHED;
@@ -128,9 +134,10 @@ public abstract class BaseAgent {
         CompletableFuture.runAsync(() -> {
             // 1、基础校验
             try {
-                this.stepRecords = new ArrayList<>();
-                this.eventConsumer = event -> sendSseEvent(sseEmitter, event, structured);
-                if (this.state != AgentState.IDLE) {
+            this.stepRecords = new ArrayList<>();
+            this.eventConsumer = event -> sendSseEvent(sseEmitter, event, structured);
+            this.preferredResponseLanguage = detectPreferredResponseLanguage(userPrompt);
+            if (this.state != AgentState.IDLE) {
                     sendError("错误：无法从状态运行代理：" + this.state);
                     sseEmitter.complete();
                     return;
@@ -158,13 +165,15 @@ public abstract class BaseAgent {
                     log.info("Executing step {}/{}", stepNumber, maxSteps);
                     // 单步执行
                     String stepResult = step();
-                    String result = "Step " + stepNumber + ": " + stepResult;
-                    results.add(result);
-                    // 输出当前每一步的结果到 SSE
-                    if (!structured) {
-                        sseEmitter.send(result);
-                    } else {
-                        emitEvent("message", java.util.Map.of("content", stepResult));
+                    if (StrUtil.isNotBlank(stepResult)) {
+                        String result = "Step " + stepNumber + ": " + stepResult;
+                        results.add(result);
+                        // 输出当前每一步的结果到 SSE
+                        if (!structured) {
+                            sseEmitter.send(result);
+                        } else {
+                            emitEvent("message", java.util.Map.of("content", stepResult));
+                        }
                     }
                 }
                 // 检查是否超出步骤限制
@@ -230,6 +239,7 @@ public abstract class BaseAgent {
         // 子类可以重写此方法来清理资源
         this.messageList = new ArrayList<>();
         this.currentStep = 0;
+        this.preferredResponseLanguage = "与用户问题相同的语言";
         if (this.state != AgentState.ERROR) {
             this.state = AgentState.IDLE;
         }
@@ -273,6 +283,20 @@ public abstract class BaseAgent {
             return sanitized;
         }
         return sanitized.substring(0, maxObservationLength) + "\n[内容过长，已截断]";
+    }
+
+    protected String getPreferredResponseLanguageInstruction() {
+        return preferredResponseLanguage;
+    }
+
+    private String detectPreferredResponseLanguage(String userPrompt) {
+        if (userPrompt == null || userPrompt.isBlank()) {
+            return "与用户问题相同的语言";
+        }
+        if (userPrompt.matches(".*[\\u4e00-\\u9fff].*")) {
+            return "请使用简体中文回答，并把英文工具结果整理成中文总结";
+        }
+        return "Please answer in the same language as the user";
     }
 
     private int stepNumber() {

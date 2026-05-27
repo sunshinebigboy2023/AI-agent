@@ -48,7 +48,7 @@ public class KnowledgeDocumentLoader {
         try (Stream<Path> paths = Files.list(storageDir)) {
             return paths
                     .filter(Files::isDirectory)
-                    .map(this::loadStoredFileQuietly)
+                    .flatMap(this::loadClientStoredFiles)
                     .filter(file -> file != null)
                     .toList();
         } catch (IOException e) {
@@ -56,7 +56,23 @@ public class KnowledgeDocumentLoader {
         }
     }
 
-    private StoredKnowledgeFile loadStoredFileQuietly(Path fileDir) {
+    private Stream<StoredKnowledgeFile> loadClientStoredFiles(Path clientDir) {
+        try {
+            String clientId = clientDir.getFileName().toString();
+            try (Stream<Path> filePaths = Files.list(clientDir)) {
+                return filePaths
+                        .filter(Files::isDirectory)
+                        .map(fileDir -> loadStoredFileQuietly(clientId, fileDir))
+                        .filter(file -> file != null)
+                        .toList()
+                        .stream();
+            }
+        } catch (IOException e) {
+            return Stream.empty();
+        }
+    }
+
+    private StoredKnowledgeFile loadStoredFileQuietly(String clientId, Path fileDir) {
         try {
             Properties metadata = readMetadata(fileDir.resolve(METADATA_FILE));
             String id = metadata.getProperty("id");
@@ -75,6 +91,7 @@ public class KnowledgeDocumentLoader {
             return new StoredKnowledgeFile(
                     new KnowledgeFileInfo(
                             id,
+                            metadata.getProperty("clientId", clientId),
                             filename,
                             Long.parseLong(metadata.getProperty("size", "0")),
                             metadata.getProperty("contentType"),

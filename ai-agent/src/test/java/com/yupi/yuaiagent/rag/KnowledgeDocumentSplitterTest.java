@@ -14,18 +14,18 @@ class KnowledgeDocumentSplitterTest {
     @Test
     void shouldKeepSmallFileAsSingleChunk() {
         KnowledgeDocumentSplitter splitter = new KnowledgeDocumentSplitter(1000, 150);
-        KnowledgeFileInfo fileInfo = new KnowledgeFileInfo("file-1", "notes.txt", 10, "text/plain", "indexed", 1L);
+        KnowledgeFileInfo fileInfo = new KnowledgeFileInfo("file-1", "client-001", "notes.txt", 10, "text/plain", "indexed", 1L);
 
         List<Document> documents = splitter.split(fileInfo, "会议纪要\n今天同步了项目计划。");
 
         assertEquals(1, documents.size());
-        assertEquals("file-1_chunk_0", documents.getFirst().getId());
+        assertEquals("client-001_file-1_chunk_0", documents.getFirst().getId());
     }
 
     @Test
     void shouldSplitLongMarkdownIntoMultipleChunksWithMetadata() {
         KnowledgeDocumentSplitter splitter = new KnowledgeDocumentSplitter(80, 20);
-        KnowledgeFileInfo fileInfo = new KnowledgeFileInfo("file-2", "guide.md", 100, "text/markdown", "indexed", 1L);
+        KnowledgeFileInfo fileInfo = new KnowledgeFileInfo("file-2", "client-002", "guide.md", 100, "text/markdown", "indexed", 1L);
         String content = """
                 # 标题一
                 第一段内容很长，用于模拟一份需要切分的 Markdown 文档。第一段内容很长，用于模拟一份需要切分的 Markdown 文档。
@@ -40,6 +40,7 @@ class KnowledgeDocumentSplitterTest {
         Document first = documents.getFirst();
         assertEquals("guide.md", first.getMetadata().get("filename"));
         assertEquals("guide.md", first.getMetadata().get("originalFilename"));
+        assertEquals("client-002", first.getMetadata().get("clientId"));
         assertEquals("knowledge-file", first.getMetadata().get("source"));
         assertEquals(0, first.getMetadata().get("chunkIndex"));
         assertEquals(documents.size(), first.getMetadata().get("totalChunks"));
@@ -48,7 +49,7 @@ class KnowledgeDocumentSplitterTest {
     @Test
     void shouldApplyOverlapBetweenAdjacentChunks() {
         KnowledgeDocumentSplitter splitter = new KnowledgeDocumentSplitter(80, 10);
-        KnowledgeFileInfo fileInfo = new KnowledgeFileInfo("file-3", "policy.txt", 100, "text/plain", "indexed", 1L);
+        KnowledgeFileInfo fileInfo = new KnowledgeFileInfo("file-3", "client-003", "policy.txt", 100, "text/plain", "indexed", 1L);
         String content = "这是第一段很长的报销制度说明，用于触发分块处理。".repeat(8);
 
         List<Document> documents = splitter.split(fileInfo, content);
@@ -63,7 +64,7 @@ class KnowledgeDocumentSplitterTest {
     @Test
     void shouldIgnoreEmptyContentSafely() {
         KnowledgeDocumentSplitter splitter = new KnowledgeDocumentSplitter(1000, 150);
-        KnowledgeFileInfo fileInfo = new KnowledgeFileInfo("file-4", "empty.txt", 0, "text/plain", "indexed", 1L);
+        KnowledgeFileInfo fileInfo = new KnowledgeFileInfo("file-4", "client-004", "empty.txt", 0, "text/plain", "indexed", 1L);
 
         List<Document> documents = splitter.split(fileInfo, "   \n\n ");
 

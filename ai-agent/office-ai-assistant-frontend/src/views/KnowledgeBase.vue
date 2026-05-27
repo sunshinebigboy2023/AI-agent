@@ -68,7 +68,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppFooter from '../components/AppFooter.vue'
-import { deleteKnowledgeFile, listKnowledgeFiles, uploadKnowledgeFile } from '../api'
+import { deleteKnowledgeFile, listKnowledgeFiles, uploadKnowledgeFile, mapApiErrorMessage } from '../api'
 
 const router = useRouter()
 const files = ref([])
@@ -99,7 +99,7 @@ const loadFiles = async () => {
     const response = await listKnowledgeFiles()
     files.value = response.data || []
   } catch (error) {
-    setNotice('读取知识库文件失败，请确认后端服务已启动。', 'error')
+    setNotice(mapApiErrorMessage(error, '读取知识库文件失败。'), 'error')
   } finally {
     loading.value = false
   }
@@ -114,7 +114,7 @@ const uploadSelectedFile = async () => {
     selectedFile.value = null
     await loadFiles()
   } catch (error) {
-    const message = error.response?.data?.message || '上传失败，请确认文件类型为 .md 或 .txt。'
+    const message = mapApiErrorMessage(error, '上传失败，请确认文件类型为 .md 或 .txt。')
     setNotice(message, 'error')
   } finally {
     uploading.value = false
@@ -131,7 +131,7 @@ const deleteFile = async (fileId) => {
     setNotice('文件已删除。')
     await loadFiles()
   } catch (error) {
-    setNotice('删除失败，请稍后重试。', 'error')
+    setNotice(mapApiErrorMessage(error, '删除失败，请稍后重试。'), 'error')
   } finally {
     deletingId.value = ''
   }

@@ -29,27 +29,31 @@ public class KnowledgeFileService {
     private final Path storageDir;
     private final long maxUploadBytes;
     private final KnowledgeIndexService knowledgeIndexService;
+    private final KnowledgeClientIdSupport knowledgeClientIdSupport;
 
     @Autowired
     public KnowledgeFileService(
             @Value("${office.knowledge.storage-dir:${user.dir}/tmp/knowledge}") String storageDir,
             @Value("${office.knowledge.max-upload-bytes:10485760}") long maxUploadBytes,
-            KnowledgeIndexService knowledgeIndexService
+            KnowledgeIndexService knowledgeIndexService,
+            KnowledgeClientIdSupport knowledgeClientIdSupport
     ) {
-        this(Path.of(storageDir), knowledgeIndexService, maxUploadBytes);
+        this(Path.of(storageDir), knowledgeIndexService, knowledgeClientIdSupport, maxUploadBytes);
     }
 
-    KnowledgeFileService(Path storageDir, KnowledgeIndexService knowledgeIndexService) {
-        this(storageDir, knowledgeIndexService, DEFAULT_MAX_UPLOAD_BYTES);
+    KnowledgeFileService(Path storageDir, KnowledgeIndexService knowledgeIndexService, KnowledgeClientIdSupport knowledgeClientIdSupport) {
+        this(storageDir, knowledgeIndexService, knowledgeClientIdSupport, DEFAULT_MAX_UPLOAD_BYTES);
     }
 
-    KnowledgeFileService(Path storageDir, KnowledgeIndexService knowledgeIndexService, long maxUploadBytes) {
+    KnowledgeFileService(Path storageDir, KnowledgeIndexService knowledgeIndexService, KnowledgeClientIdSupport knowledgeClientIdSupport, long maxUploadBytes) {
         this.storageDir = storageDir;
         this.knowledgeIndexService = knowledgeIndexService;
+        this.knowledgeClientIdSupport = knowledgeClientIdSupport;
         this.maxUploadBytes = maxUploadBytes;
     }
 
-    public KnowledgeFileInfo upload(MultipartFile file) throws IOException {
+    public KnowledgeFileInfo upload(String clientId, MultipartFile file) throws IOException {
+        clientId = knowledgeClientIdSupport.requireValidClientId(clientId);
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Uploaded file is empty.");
         }
@@ -62,7 +66,9 @@ public class KnowledgeFileService {
 
         Files.createDirectories(storageDir);
         String fileId = UUID.randomUUID().toString();
-        Path fileDir = storageDir.resolve(fileId);
+        Path clientDir = storageDir.resolve(clientId);
+        Files.createDirectories(clientDir);
+        Path fileDir = clientDir.resolve(fileId);
         Files.createDirectories(fileDir);
 
         Path savedFile = fileDir.resolve(originalFilename);
@@ -75,6 +81,7 @@ public class KnowledgeFileService {
         }
         KnowledgeFileInfo info = new KnowledgeFileInfo(
                 fileId,
+                clientId,
                 originalFilename,
                 file.getSize(),
                 file.getContentType(),
@@ -83,7 +90,7 @@ public class KnowledgeFileService {
         );
         try {
             saveMetadata(fileDir, info);
-            knowledgeIndexService.indexFile(info, content);
+            knowledgeIndexService.indexFile(clientId, info, content);
             return info;
         } catch (Exception e) {
             FileSystemUtils.deleteRecursively(fileDir);
@@ -91,11 +98,13 @@ public class KnowledgeFileService {
         }
     }
 
-    public List<KnowledgeFileInfo> listFiles() throws IOException {
-        if (!Files.exists(storageDir)) {
+    public List<KnowledgeFileInfo> listFiles(String clientId) throws IOException {
+        clientId = knowledgeClientIdSupport.requireValidClientId(clientId);
+        Path clientDir = storageDir.resolve(clientId);
+        if (!Files.exists(clientDir)) {
             return List.of();
         }
-        try (Stream<Path> paths = Files.list(storageDir)) {
+        try (Stream<Path> paths = Files.list(clientDir)) {
             return paths
                     .filter(Files::isDirectory)
                     .map(this::readMetadataQuietly)
@@ -105,7 +114,8 @@ public class KnowledgeFileService {
         }
     }
 
-    public void delete(String fileId) throws IOException {
+    public void delete(String clientId, String fileId) throws IOException {
+        clientId = knowledgeClientIdSupport.requireValidClientId(clientId);
         if (fileId == null || fileId.isBlank()) {
             throw new IllegalArgumentException("fileId is required.");
         }
@@ -114,13 +124,18 @@ public class KnowledgeFileService {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("fileId is invalid.");
         }
-        knowledgeIndexService.deleteFileIndex(fileId);
-        FileSystemUtils.deleteRecursively(storageDir.resolve(fileId));
+        Path fileDir = storageDir.resolve(clientId).resolve(fileId);
+        if (!Files.exists(fileDir)) {
+            throw new IllegalArgumentException("Knowledge file does not exist for current client.");
+        }
+        knowledgeIndexService.deleteFileIndex(clientId, fileId);
+        FileSystemUtils.deleteRecursively(fileDir);
     }
 
     private void saveMetadata(Path fileDir, KnowledgeFileInfo info) throws IOException {
         Properties properties = new Properties();
         properties.setProperty("id", info.id());
+        properties.setProperty("clientId", info.clientId());
         properties.setProperty("originalFilename", info.originalFilename());
         properties.setProperty("size", String.valueOf(info.size()));
         properties.setProperty("contentType", info.contentType() == null ? "" : info.contentType());
@@ -141,6 +156,7 @@ public class KnowledgeFileService {
             properties.load(reader);
             return new KnowledgeFileInfo(
                     properties.getProperty("id"),
+                    properties.getProperty("clientId"),
                     properties.getProperty("originalFilename"),
                     Long.parseLong(properties.getProperty("size", "0")),
                     properties.getProperty("contentType"),

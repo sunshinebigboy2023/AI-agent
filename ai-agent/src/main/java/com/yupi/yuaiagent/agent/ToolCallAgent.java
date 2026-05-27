@@ -1,5 +1,8 @@
 package com.yupi.yuaiagent.agent;
 
+import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
@@ -42,6 +45,10 @@ public class ToolCallAgent extends ReActAgent {
     // 禁用 Spring AI 内置的工具调用机制，自己维护选项和消息上下文
     private final ChatOptions chatOptions;
 
+    private boolean terminateRequested;
+
+    private String pendingFinalAnswer;
+
     public ToolCallAgent(ToolCallback[] availableTools) {
         super();
         this.availableTools = availableTools;
@@ -60,6 +67,17 @@ public class ToolCallAgent extends ReActAgent {
     @Override
     public boolean think() {
         // 1、校验提示词，拼接用户提示词
+        if (terminateRequested) {
+            UserMessage finalizeMessage = new UserMessage("""
+                    Based on the tool results you already have, provide the final answer to the user now.
+                    Do not call any tools.
+                    %s
+                    If the user asked in Chinese, your final answer must be in Simplified Chinese.
+                    Translate and summarize English tool results instead of returning them verbatim.
+                    """.formatted(getPreferredResponseLanguageInstruction()));
+            getMessageList().add(finalizeMessage);
+            terminateRequested = false;
+        }
         if (StrUtil.isNotBlank(getNextStepPrompt())) {
             UserMessage userMessage = new UserMessage(getNextStepPrompt());
             getMessageList().add(userMessage);
@@ -93,6 +111,9 @@ public class ToolCallAgent extends ReActAgent {
             if (toolCallList.isEmpty()) {
                 // 只有不调用工具时，才需要手动记录助手消息
                 getMessageList().add(assistantMessage);
+                pendingFinalAnswer = StrUtil.blankToDefault(result, "已完成当前任务。");
+                setState(AgentState.FINISHED);
+                recordStep(getCurrentStep(), AgentStepPhase.FINAL, null, null, null, pendingFinalAnswer, null);
                 return false;
             } else {
                 // 需要调用工具时，无需记录助手消息，因为调用工具时会自动记录
@@ -130,11 +151,10 @@ public class ToolCallAgent extends ReActAgent {
         boolean terminateToolCalled = toolResponseMessage.getResponses().stream()
                 .anyMatch(response -> response.name().equals("doTerminate"));
         if (terminateToolCalled) {
-            // 任务结束，更改状态
-            setState(AgentState.FINISHED);
+            terminateRequested = true;
         }
         String results = toolResponseMessage.getResponses().stream()
-                .map(response -> "工具 " + response.name() + " 返回的结果：" + response.responseData())
+                .map(response -> "工具 " + response.name() + " 返回的结果：" + summarizeObservation(response.name(), response.responseData()))
                 .collect(Collectors.joining("\n"));
         toolResponseMessage.getResponses().forEach(response ->
                 recordStep(getCurrentStep(), AgentStepPhase.OBSERVATION,
@@ -142,5 +162,60 @@ public class ToolCallAgent extends ReActAgent {
         );
         log.info(results);
         return results;
+    }
+
+    @Override
+    public String step() {
+        try {
+            boolean shouldAct = think();
+            if (!shouldAct) {
+                String finalAnswer = pendingFinalAnswer;
+                pendingFinalAnswer = null;
+                return StrUtil.blankToDefault(finalAnswer, "已完成当前任务。");
+            }
+            act();
+            return "";
+        } catch (Exception e) {
+            log.error("步骤执行失败", e);
+            recordStep(getCurrentStep(), AgentStepPhase.ERROR,
+                    null, null, null, null, e.getMessage());
+            return "步骤执行失败：" + e.getMessage();
+        }
+    }
+
+    private String summarizeObservation(String toolName, String observation) {
+        if (StrUtil.isBlank(observation)) {
+            return "";
+        }
+        if ("searchWeb".equals(toolName) || toolName.endsWith(".searchWeb")) {
+            String summarized = summarizeSearchObservation(observation);
+            if (StrUtil.isNotBlank(summarized)) {
+                return abbreviate(summarized);
+            }
+        }
+        return abbreviate(observation);
+    }
+
+    private String summarizeSearchObservation(String observation) {
+        try {
+            JSONObject jsonObject = JSONUtil.parseObj(observation);
+            JSONArray results = jsonObject.getJSONArray("results");
+            String summary = jsonObject.getStr("summary");
+            if (results == null || results.isEmpty()) {
+                return StrUtil.blankToDefault(summary, "未找到相关搜索结果。");
+            }
+            List<String> lines = new java.util.ArrayList<>();
+            for (int i = 0; i < Math.min(results.size(), 4); i++) {
+                JSONObject result = results.getJSONObject(i);
+                lines.add(String.format("%s | %s | %s",
+                        result.getStr("title", "未命名结果"),
+                        result.getStr("source", "未知来源"),
+                        result.getStr("snippet", "")));
+            }
+            String items = String.join("\n", lines);
+            return StrUtil.blankToDefault(summary, "已找到相关结果。") + "\n" + items;
+        } catch (Exception e) {
+            return observation;
+        }
     }
 }

@@ -6,7 +6,6 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
-import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.InMemoryChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
@@ -74,14 +73,18 @@ public class OfficeAssistantApp {
     }
 
     public Flux<String> doChatWithRagByStream(String message, String chatId) {
+        return doChatWithRagByStream(message, chatId, null);
+    }
+
+    public Flux<String> doChatWithRagByStream(String message, String chatId, String clientId) {
         String rewrittenMessage = queryRewriter.doQueryRewrite(message);
-        logRetrievedDocuments(rewrittenMessage);
+        List<org.springframework.ai.document.Document> retrievedDocuments = retrieveKnowledgeDocuments(rewrittenMessage, clientId);
+        logRetrievedDocuments(clientId, toRetrievedDocumentViews(retrievedDocuments));
         return wrapStreamMetrics("office_app.chat.rag", message, chatId, chatClient
                 .prompt()
-                .user(rewrittenMessage)
+                .user(buildRagPrompt(message, rewrittenMessage, retrievedDocuments))
                 .advisors(spec -> spec.param(CHAT_MEMORY_CONVERSATION_ID_KEY, chatId)
                         .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 10))
-                .advisors(new QuestionAnswerAdvisor(officeVectorStore))
                 .stream()
                 .content());
     }
@@ -109,15 +112,19 @@ public class OfficeAssistantApp {
     private VectorStore officeVectorStore;
 
     public String doChatWithRag(String message, String chatId) {
+        return doChatWithRag(message, chatId, null);
+    }
+
+    public String doChatWithRag(String message, String chatId, String clientId) {
         String rewrittenMessage = queryRewriter.doQueryRewrite(message);
-        logRetrievedDocuments(rewrittenMessage);
+        List<org.springframework.ai.document.Document> retrievedDocuments = retrieveKnowledgeDocuments(rewrittenMessage, clientId);
+        logRetrievedDocuments(clientId, toRetrievedDocumentViews(retrievedDocuments));
         ChatResponse chatResponse = chatClient
                 .prompt()
-                .user(rewrittenMessage)
+                .user(buildRagPrompt(message, rewrittenMessage, retrievedDocuments))
                 .advisors(spec -> spec.param(CHAT_MEMORY_CONVERSATION_ID_KEY, chatId)
                         .param(CHAT_MEMORY_RETRIEVE_SIZE_KEY, 10))
                 .advisors(new MyLoggerAdvisor())
-                .advisors(new QuestionAnswerAdvisor(officeVectorStore))
                 .call()
                 .chatResponse();
         String content = chatResponse.getResult().getOutput().getText();
@@ -125,10 +132,10 @@ public class OfficeAssistantApp {
         return content;
     }
 
-    public RagDebugResponse doChatWithRagDebug(String message, String chatId) {
+    public RagDebugResponse doChatWithRagDebug(String message, String chatId, String clientId) {
         String rewrittenMessage = queryRewriter.doQueryRewrite(message);
-        List<RetrievedDocumentView> retrievedDocuments = retrieveDocuments(rewrittenMessage);
-        String answer = doChatWithRag(message, chatId);
+        List<RetrievedDocumentView> retrievedDocuments = toRetrievedDocumentViews(retrieveKnowledgeDocuments(rewrittenMessage, clientId));
+        String answer = doChatWithRag(message, chatId, clientId);
         return new RagDebugResponse(rewrittenMessage, answer, retrievedDocuments);
     }
 
@@ -185,38 +192,83 @@ public class OfficeAssistantApp {
                         scenario, System.currentTimeMillis() - start, chatId, signalType));
     }
 
-    private void logRetrievedDocuments(String query) {
-        List<RetrievedDocumentView> documents = retrieveDocuments(query);
+    private void logRetrievedDocuments(String clientId, List<RetrievedDocumentView> documents) {
         if (!documents.isEmpty()) {
-            log.info("RAG retrieved documents: {}", documents);
+            log.info("RAG retrieved documents for clientId={}: {}", clientId, documents);
         }
     }
 
-    private List<RetrievedDocumentView> retrieveDocuments(String query) {
+    private List<org.springframework.ai.document.Document> retrieveKnowledgeDocuments(String query, String clientId) {
         List<org.springframework.ai.document.Document> documents = officeVectorStore.similaritySearch(
-                SearchRequest.builder().query(query).topK(4).build()
+                SearchRequest.builder().query(query).topK(12).build()
         );
         if (documents == null) {
             return List.of();
         }
-        List<RetrievedDocumentView> views = new ArrayList<>();
+        List<org.springframework.ai.document.Document> filteredDocuments = new ArrayList<>();
         for (org.springframework.ai.document.Document document : documents) {
-            int chunkIndex = 0;
-            Object metadataChunkIndex = document.getMetadata().get("chunkIndex");
-            if (metadataChunkIndex != null) {
-                try {
-                    chunkIndex = Integer.parseInt(metadataChunkIndex.toString());
-                } catch (NumberFormatException ignored) {
-                    chunkIndex = 0;
+            if (clientId != null) {
+                Object metadataClientId = document.getMetadata().get("clientId");
+                if (metadataClientId == null || !clientId.equals(metadataClientId.toString())) {
+                    continue;
                 }
             }
+            filteredDocuments.add(document);
+            if (filteredDocuments.size() >= 4) {
+                break;
+            }
+        }
+        return filteredDocuments;
+    }
+
+    private List<RetrievedDocumentView> toRetrievedDocumentViews(List<org.springframework.ai.document.Document> documents) {
+        List<RetrievedDocumentView> views = new ArrayList<>();
+        for (org.springframework.ai.document.Document document : documents) {
             views.add(new RetrievedDocumentView(
                     String.valueOf(document.getMetadata().getOrDefault("filename", "unknown")),
-                    chunkIndex,
+                    parseChunkIndex(document),
                     summarize(document.getText())
             ));
         }
         return views;
+    }
+
+    private String buildRagPrompt(String originalMessage, String rewrittenMessage, List<org.springframework.ai.document.Document> documents) {
+        StringBuilder prompt = new StringBuilder()
+                .append("用户问题：").append(originalMessage).append("\n")
+                .append("检索改写：").append(rewrittenMessage).append("\n\n");
+        if (documents.isEmpty()) {
+            prompt.append("知识库片段：未检索到当前用户的相关知识库内容。\n")
+                    .append("请明确告知用户当前知识库中没有足够相关内容，不要虚构知识库来源；如有必要，可给出通用建议。");
+            return prompt.toString();
+        }
+        prompt.append("仅参考以下当前用户知识库片段回答，并在内容不足时明确说明：\n");
+        for (int i = 0; i < documents.size(); i++) {
+            org.springframework.ai.document.Document document = documents.get(i);
+            prompt.append("[片段 ").append(i + 1).append("] ")
+                    .append(document.getMetadata().getOrDefault("filename", "unknown")).append(" / chunk ")
+                    .append(parseChunkIndex(document)).append("\n")
+                    .append(trimKnowledgeChunk(document.getText())).append("\n\n");
+        }
+        prompt.append("请优先依据以上知识库片段给出准确、简洁、可执行的回答。");
+        return prompt.toString();
+    }
+
+    private int parseChunkIndex(org.springframework.ai.document.Document document) {
+        Object metadataChunkIndex = document.getMetadata().get("chunkIndex");
+        if (metadataChunkIndex != null) {
+            try {
+                return Integer.parseInt(metadataChunkIndex.toString());
+            } catch (NumberFormatException ignored) {
+                return 0;
+            }
+        }
+        return 0;
+    }
+
+    private String trimKnowledgeChunk(String text) {
+        String normalized = text == null ? "" : text.trim();
+        return normalized.length() <= 800 ? normalized : normalized.substring(0, 800) + "...";
     }
 
     private String summarize(String text) {

@@ -43,7 +43,22 @@
           </div>
           <div v-if="step.toolName" class="trace-line">工具：{{ step.toolName }}</div>
           <div v-if="step.toolArguments" class="trace-line">参数：{{ step.toolArguments }}</div>
-          <div v-if="step.observation" class="trace-line">结果：{{ step.observation }}</div>
+          <div v-if="step.searchSummary" class="trace-line">结果摘要：{{ step.searchSummary }}</div>
+          <div v-if="step.searchResults?.length" class="search-results">
+            <a
+              v-for="(result, resultIndex) in step.searchResults"
+              :key="resultIndex"
+              class="search-result"
+              :href="result.link"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <strong>{{ result.title }}</strong>
+              <span>{{ result.source }} · {{ result.relevance || '相关结果' }}</span>
+              <p>{{ result.snippet }}</p>
+            </a>
+          </div>
+          <div v-else-if="step.observation" class="trace-line">结果：{{ step.observation }}</div>
           <div v-if="step.modelOutput" class="trace-line">模型输出：{{ step.modelOutput }}</div>
           <div v-if="step.errorMessage || step.message" class="trace-line error">
             错误：{{ step.errorMessage || step.message }}
@@ -61,7 +76,7 @@ import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import ChatRoom from '../components/ChatRoom.vue'
 import AppFooter from '../components/AppFooter.vue'
-import { chatWithOfficeAgentStructured } from '../api'
+import { chatWithOfficeAgentStructured, mapSseErrorMessage } from '../api'
 
 const router = useRouter()
 const messages = ref([])
@@ -84,6 +99,26 @@ const addMessage = (content, isUser, type = '') => {
   })
 }
 
+const normalizeStep = (step) => {
+  const normalized = { ...step }
+  if (typeof normalized.observation !== 'string') {
+    return normalized
+  }
+  try {
+    const parsed = JSON.parse(normalized.observation)
+    if (parsed?.type === 'web_search_results') {
+      normalized.searchSummary = parsed.summary
+      normalized.searchResults = Array.isArray(parsed.results) ? parsed.results.slice(0, 4) : []
+      normalized.observation = ''
+    }
+  } catch (error) {
+    if (normalized.observation.length > 500) {
+      normalized.observation = `${normalized.observation.slice(0, 500)}\n[内容过长，已截断]`
+    }
+  }
+  return normalized
+}
+
 const sendMessage = (message) => {
   addMessage(message, true, 'user-question')
   steps.value = []
@@ -104,7 +139,7 @@ const sendMessage = (message) => {
   })
 
   const appendStep = (event) => {
-    steps.value.push(JSON.parse(event.data))
+    steps.value.push(normalizeStep(JSON.parse(event.data)))
   }
 
   eventSource.addEventListener('step', appendStep)
@@ -118,19 +153,23 @@ const sendMessage = (message) => {
 
   eventSource.addEventListener('error', (event) => {
     const payload = event.data ? JSON.parse(event.data) : { message: '任务执行失败' }
-    steps.value.push(payload)
+    steps.value.push(normalizeStep(payload))
     if (aiMessageIndex < messages.value.length && !messages.value[aiMessageIndex].content) {
-      messages.value[aiMessageIndex].content = payload.errorMessage || payload.message || '任务执行失败'
+      messages.value[aiMessageIndex].content = mapSseErrorMessage({
+        message: payload.errorMessage || payload.message || '任务执行失败'
+      }, '任务执行失败')
     }
     connectionStatus.value = 'error'
     eventSource?.close()
   })
 
-  eventSource.onerror = () => {
+  eventSource.onerror = (event) => {
+    const payload = event?.data ? JSON.parse(event.data) : { message: '任务连接中断，请检查后端服务或稍后重试。' }
+    const message = mapSseErrorMessage(payload, '任务连接中断，请检查后端服务或稍后重试。')
     const hasContent = aiMessageIndex < messages.value.length && messages.value[aiMessageIndex].content
     connectionStatus.value = hasContent ? 'disconnected' : 'error'
     if (!hasContent && aiMessageIndex < messages.value.length) {
-      messages.value[aiMessageIndex].content = '任务连接中断，请检查后端服务或稍后重试。'
+      messages.value[aiMessageIndex].content = message
     }
     eventSource.close()
   }
@@ -306,6 +345,33 @@ onBeforeUnmount(() => {
 
 .trace-line.error {
   color: #b91c1c;
+}
+
+.search-results {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.search-result {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  color: #0f172a;
+  text-decoration: none;
+  background: #fff;
+}
+
+.search-result span {
+  color: #0f766e;
+  font-size: 12px;
+}
+
+.search-result p {
+  color: #475569;
+  line-height: 1.6;
 }
 
 @media (max-width: 860px) {
